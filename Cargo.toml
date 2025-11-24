@@ -1,6 +1,7 @@
-[package]
-name = "fin_parser"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
+[workspace]
+members = [
+    "parser",
+    "cli-converter",
+    "cli-comparer",
+]
+resolver = "3"
