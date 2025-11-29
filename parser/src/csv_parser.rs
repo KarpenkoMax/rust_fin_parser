@@ -1,19 +1,12 @@
 use std::io::Read;
-use chrono::{NaiveDate, ParseError};
+use chrono::NaiveDate;
 use csv::{ReaderBuilder, StringRecord};
-use crate::error;
-use crate::model::{Statement, Transaction, Direction};
+use crate::error::ParseError;
+use crate::model::{Balance, Currency, Direction, Statement, Transaction};
 
-impl From<csv::Error> for error::ParseError {
+impl From<csv::Error> for ParseError {
     fn from(e: csv::Error) -> Self {
-        error::ParseError::Csv(e)
-    }
-}
-
-/// ParseError chrono в наш
-impl From<ParseError> for error::ParseError {
-    fn from(e: ParseError) -> Self {
-        error::ParseError::Date(e)
+        ParseError::Csv(e)
     }
 }
 
@@ -35,9 +28,9 @@ impl CsvHeader {
     /// Формирует поля выписки из данных заголовка csv-файла
     /// 
     /// Ожидает строго определённое расположение полей в заголовке
-    fn from_string_records(rows: &[StringRecord]) -> Result<Self, error::ParseError> {
+    fn from_string_records(rows: &[StringRecord]) -> Result<Self, ParseError> {
         if rows.len() < 8 {
-            return Err(error::ParseError::Header("invalid header: not enough rows".to_string()));
+            return Err(ParseError::Header("invalid header: not enough rows".to_string()));
         }
 
         // хелпер
@@ -132,7 +125,7 @@ impl CsvRecord {
         }
     }
 
-    fn into_transaction(self, our_account: &str) -> Result<Transaction, error::ParseError> {
+    fn into_transaction(self, our_account: &str) -> Result<Transaction, ParseError> {
         let booking_date = NaiveDate::parse_from_str(&self.booking_date, "%d.%m.%Y")?;
         let value_date: Option<NaiveDate> = None;
         let (amount, direction) = parse_amount_and_direction(
@@ -190,14 +183,14 @@ fn extract_counterparty_account(
     None
 }
 
-fn parse_amount(raw: &str) -> Result<u64, error::ParseError> {
+fn parse_amount(raw: &str) -> Result<u64, ParseError> {
     let cleaned = raw.trim().replace(' ', "").replace(',', ".");
 
     if cleaned.is_empty() {
-        return Err(error::ParseError::InvalidAmount("empty amount".to_string()));
+        return Err(ParseError::InvalidAmount("empty amount".to_string()));
     }
     if cleaned.starts_with('-'){
-        return Err(error::ParseError::InvalidAmount(format!("negative amount: {cleaned}")));
+        return Err(ParseError::InvalidAmount(format!("negative amount: {cleaned}")));
     }
 
     let mut split = cleaned.split('.');
@@ -206,12 +199,10 @@ fn parse_amount(raw: &str) -> Result<u64, error::ParseError> {
     let dec_part = split.next().unwrap_or("");
     if split.next().is_some() {
         // больше одной точки — странный формат
-        return Err(error::ParseError::InvalidAmount(format!("too many dots in amount: {cleaned}")));
+        return Err(ParseError::InvalidAmount(format!("too many dots in amount: {cleaned}")));
     }
 
-    let int_part: u64 = int_part
-        .parse()
-        .map_err(|e| error::ParseError::Int(e))?;
+    let int_part: u64 = int_part.parse()?;
 
     let dec_part: u64 = match dec_part.len() {
         0 => 0,
@@ -220,16 +211,15 @@ fn parse_amount(raw: &str) -> Result<u64, error::ParseError> {
                 .chars()
                 .next()
                 .and_then(|c| c.to_digit(10))
-                .ok_or_else(|| error::ParseError::InvalidAmount(format!("invalid fractional part: {cleaned}")))?;
+                .ok_or_else(|| ParseError::InvalidAmount(format!("invalid fractional part: {cleaned}")))?;
             d as u64 * 10
         },
         2 => {
             dec_part
-                .parse()
-                .map_err(|e| error::ParseError::Int(e))?
+                .parse()?
         },
         _ => {
-            return Err(error::ParseError::InvalidAmount(format!("too many fractional digits in amount: {cleaned}")));
+            return Err(ParseError::InvalidAmount(format!("too many fractional digits in amount: {cleaned}")));
         }
     };
 
@@ -239,7 +229,7 @@ fn parse_amount(raw: &str) -> Result<u64, error::ParseError> {
 fn parse_amount_and_direction(
     debit: Option<&str>,
     credit: Option<&str>,
-) -> Result<(u64, Direction), error::ParseError> {
+) -> Result<(u64, Direction), ParseError> {
     match (debit, credit) {
         (Some(d), None) => {
             let amount = parse_amount(d)?;
@@ -247,11 +237,11 @@ fn parse_amount_and_direction(
             Ok((amount, direction))
         },
         (None, Some(c)) => {
-            let amount = parse_amount(&c)?;
+            let amount = parse_amount(c)?;
             let direction = Direction::Credit;
             Ok((amount, direction))
         },
-        _ => Err(error::ParseError::AmountSideConflict)
+        _ => Err(ParseError::AmountSideConflict)
     }
 }
 
@@ -273,17 +263,17 @@ struct TableLayout {
 /// Ищет индекс колонки, содержащей текст
 /// 
 /// Возвращает первый найденный, если не находит - возвращает ошибку
-fn find_col(row: &StringRecord, needle: &str) -> Result<usize, error::ParseError> {
+fn find_col(row: &StringRecord, needle: &str) -> Result<usize, ParseError> {
     row.iter()
         .position(|field| field.contains(needle))
-        .ok_or_else(|| error::ParseError::Header(
+        .ok_or_else(|| ParseError::Header(
             format!("column with header containing '{needle}' not found")
         ))
 }
 
 impl TableLayout {
     /// По паттернам строк определяет индексы необходимых колонок
-    fn from_string_records(headers_row: &StringRecord, subheaders_row: &StringRecord) -> Result<Self, error::ParseError> {
+    fn from_string_records(headers_row: &StringRecord, subheaders_row: &StringRecord) -> Result<Self, ParseError> {
         // первая строка заголовков - основные
         let booking_date_col = find_col(headers_row, "Дата проводки")?;
         let debit_account_col  = find_col(subheaders_row, "Дебет")?;
@@ -316,16 +306,94 @@ pub struct CsvData {
     records: Vec<CsvRecord>,
 }
 
+fn parse_rus_date(raw: &str) -> Result<NaiveDate, ParseError> {
+    let s = raw.trim();
+    let s = s
+        .trim_end_matches(|c: char| c.is_whitespace() || c == '.' || c == 'г')
+        .trim();
+
+    let parts: Vec<&str> = s.split_whitespace().collect();
+
+    if parts.len() < 3 {
+        return Err(ParseError::Header(format!("invalid date from string {raw}")));
+    }
+
+    let day: u32 = parts[0]
+        .parse()
+        .map_err(|_| ParseError::Header(format!("invalid day part of date str {raw}")))?;
+
+    let year: i32 = parts[2]
+        .parse()
+        .map_err(|_| ParseError::Header(format!("invalid year part of date str {raw}")))?;
+
+    let month_str = parts[1].to_lowercase();
+
+    let month = match month_str.as_str() {
+        "января" => 1,
+        "февраля" => 2,
+        "марта" => 3,
+        "апреля" => 4,
+        "мая" => 5,
+        "июня" => 6,
+        "июля" => 7,
+        "августа" => 8,
+        "сентября" => 9,
+        "октября" => 10,
+        "ноября" => 11,
+        "декабря" => 12,
+        _ => return Err(ParseError::Header(format!("unknown month in date: {raw}"))),
+    };
+
+    NaiveDate::from_ymd_opt(year, month, day)
+        .ok_or_else(|| ParseError::Header(format!("invalid date: {raw}")))
+}
+
+fn parse_currency(raw: &str) -> Currency {
+    let s = raw.trim();
+
+    match s {
+        "Российский рубль" => Currency::RUB,
+        "Американский доллар" => Currency::USD,
+        "Евро" => Currency::EUR,
+        "Китайский юань" => Currency::CNY,
+        other => Currency::Other(other.to_string())
+    }
+}
+
 impl TryFrom<CsvData> for Statement {
-    type Error = error::ParseError;
+    type Error = ParseError;
     fn try_from(data: CsvData) -> Result<Self, Self::Error> {
         let account_id = data.header.client_account;
-        let account_name = data.header.client_name;
+        let account_name = Some(data.header.client_name);
+        let currency = parse_currency(&data.header.currency);
+        let opening_balance: Option<Balance> = None;
+        let closing_balance: Option<Balance> = None;
+        let period_from = data.header.period_from.trim_start_matches("за период с").trim();
+        let period_until = data.header.period_until.trim_start_matches("по").trim();
+
+        let period_from = parse_rus_date(period_from)?;
+        let period_until = parse_rus_date(period_until)?;
+
+        let transactions = data.records
+            .into_iter()
+            .map(|rec: CsvRecord| rec.into_transaction(&account_id))
+            .collect::<Result<Vec<Transaction>, ParseError>>()?;
+
+        Ok(Statement::new(
+            account_id,
+            account_name,
+            currency,
+            opening_balance,
+            closing_balance,
+            transactions,
+            period_from,
+            period_until
+        ))
     }
 }
 
 impl CsvData {
-    pub fn parse<R: Read>(reader: R) -> Result<Self, error::ParseError> {
+    pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)
             .from_reader(reader);
@@ -353,7 +421,7 @@ impl CsvData {
                         let r = next_result?;
                         subheaders_row = Some(r);
                     } else {
-                        return Err(error::ParseError::Header("unexpected EOF: second header row missing".to_string()));
+                        return Err(ParseError::Header("unexpected EOF: second header row missing".to_string()));
                     }
 
                     in_data_section = true;
@@ -365,8 +433,8 @@ impl CsvData {
             }
         }
 
-        let headers_row = headers_row.ok_or_else(|| error::ParseError::Header("table headers row not found".to_string()))?;
-        let subheaders_row = subheaders_row.ok_or_else(|| error::ParseError::Header("table subheaders row not found".to_string()))?;
+        let headers_row = headers_row.ok_or_else(|| ParseError::Header("table headers row not found".to_string()))?;
+        let subheaders_row = subheaders_row.ok_or_else(|| ParseError::Header("table subheaders row not found".to_string()))?;
 
         let header = CsvHeader::from_string_records(&header_rows)?;
         let layout = TableLayout::from_string_records(&headers_row, &subheaders_row)?;

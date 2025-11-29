@@ -17,11 +17,35 @@ pub struct Statement {
     account_id: String,
     account_name: Option<String>,
     currency: Currency,
-    opening_balance: Balance,
-    closing_balance: Balance,
+    opening_balance: Option<Balance>,
+    closing_balance: Option<Balance>,
     transactions: Vec<Transaction>,
     period_from: NaiveDate,
     period_until: NaiveDate,
+}
+
+impl Statement {
+    pub fn new(
+        account_id: String,
+        account_name: Option<String>,
+        currency: Currency,
+        opening_balance: Option<Balance>,
+        closing_balance: Option<Balance>,
+        transactions: Vec<Transaction>,
+        period_from: NaiveDate,
+        period_until: NaiveDate,
+    ) -> Self {
+        Statement { 
+            account_id,
+            account_name,
+            currency,
+            opening_balance,
+            closing_balance,
+            transactions,
+            period_from,
+            period_until,
+         }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

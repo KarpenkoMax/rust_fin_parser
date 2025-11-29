@@ -1,4 +1,5 @@
 use std::{error::Error, fmt::{self, write}};
+use chrono::ParseError as ChronoParseError;
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -42,5 +43,17 @@ impl Error for ParseError {
             ParseError::Int(e) => Some(e),
             _ => None,
         }
+    }
+}
+
+impl From<ChronoParseError> for ParseError {
+    fn from(e: ChronoParseError) -> Self {
+        ParseError::Date(e)
+    }
+}
+
+impl From<std::num::ParseIntError> for ParseError {
+    fn from(e: std::num::ParseIntError) -> Self {
+        ParseError::Int(e)
     }
 }
