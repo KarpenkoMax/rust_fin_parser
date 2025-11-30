@@ -1,0 +1,197 @@
+mod csv_helpers;
+mod camt053_helpers;
+
+use std::io::Write;
+use chrono::Utc;
+use csv::WriterBuilder;
+use crate::error::ParseError;
+use crate::model::{Statement, Direction};
+
+use quick_xml::se::to_utf8_io_writer;
+use crate::camt053::serde_models::*;
+
+impl Statement {
+    /// Записывает выписку в CSV в формате
+    pub fn write_csv<W: Write>(&self, writer: W) -> Result<(), ParseError> {
+        
+
+        let mut wtr = WriterBuilder::new()
+            .has_headers(false)
+            .from_writer(writer);
+
+        // ---- ШАПКА ----
+
+        let now = Utc::now();
+
+        let mut row0 = csv_helpers::empty_row();
+        row0[0] = now.format("%d.%m.%Y").to_string();
+        wtr.write_record(&row0)?;
+
+        let mut row1 = csv_helpers::empty_row();
+        row1[5] = "СберБизнес. экспорт выписки".to_string();
+        wtr.write_record(&row1)?;
+
+        let mut row2 = csv_helpers::empty_row();
+        row2[1] = "ПАО СБЕРБАНК".to_string();
+        wtr.write_record(&row2)?;
+
+        let mut row3 = csv_helpers::empty_row();
+        row3[1] = format!(
+            "Дата формирования выписки {} в {}",
+            now.format("%d.%m.%Y"),
+            now.format("%H:%M:%S"),
+        );
+        wtr.write_record(&row3)?;
+
+        let mut row4 = csv_helpers::empty_row();
+        row4[1] = "ВЫПИСКА ОПЕРАЦИЙ ПО ЛИЦЕВОМУ СЧЕТУ".to_string();
+        row4[12] = self.account_id.clone();
+        wtr.write_record(&row4)?;
+
+        let mut row5 = csv_helpers::empty_row();
+        row5[12] = self.account_name.clone().unwrap_or_default();
+        wtr.write_record(&row5)?;
+
+        let mut row6 = csv_helpers::empty_row();
+        let period_from_str =
+            format!("за период с {}", csv_helpers::format_rus_date(self.period_from));
+        let period_until_str =
+            format!("по {}", csv_helpers::format_rus_date(self.period_until));
+
+        row6[2] = period_from_str;
+        row6[14] = "по".to_string();
+        row6[15] = period_until_str;
+        wtr.write_record(&row6)?;
+
+        let mut row7 = csv_helpers::empty_row();
+        row7[2] = csv_helpers::currency_label(&self.currency);
+
+        if let Some(last_date) =
+            self.transactions.iter().map(|t| t.booking_date).max()
+        {
+            row7[12] = format!(
+                "Дата предыдущей операции по счету {}",
+                csv_helpers::format_rus_date(last_date)
+            );
+        }
+
+        wtr.write_record(&row7)?;
+
+        // row 8 - пустая строка перед таблицей
+        wtr.write_record(&csv_helpers::empty_row())?;
+
+        // ---- ТАБЛИЦА ОПЕРАЦИЙ ----
+
+        // Заголовки
+        let mut headers_row = csv_helpers::empty_row();
+        headers_row[1] = "Дата проводки".to_string();
+        headers_row[4] = "Счет".to_string();
+        headers_row[9] = "Сумма по дебету".to_string();
+        headers_row[13] = "Сумма по кредиту".to_string();
+        headers_row[14] = "№ документа".to_string();
+        headers_row[16] = "ВО".to_string();
+        headers_row[17] = "Банк (БИК и наименование)".to_string();
+        headers_row[20] = "Назначение платежа".to_string();
+        wtr.write_record(&headers_row)?;
+
+        // Подзаголовки
+        let mut subheaders_row = csv_helpers::empty_row();
+        subheaders_row[4] = "Дебет".to_string();
+        subheaders_row[8] = "Кредит".to_string();
+        wtr.write_record(&subheaders_row)?;
+
+        // ---- ДАННЫЕ ----
+
+        let our_account = &self.account_id;
+        let our_name = self.account_name.clone().unwrap_or_default();
+
+        for tx in &self.transactions {
+            let mut row = csv_helpers::empty_row();
+
+            // Дата проводки
+            row[1] = tx.booking_date.format("%d.%m.%Y").to_string();
+
+            // Блоки дебета/кредита
+            let cp_acc = tx.counterparty.clone().unwrap_or_default();
+            let cp_name = tx.counterparty_name.clone().unwrap_or_default();
+
+            let (debit_block, credit_block) = match tx.direction {
+                Direction::Debit => {
+                    let debit = csv_helpers::make_party_block(our_account, &our_name);
+                    let credit = csv_helpers::make_party_block(&cp_acc, &cp_name);
+                    (debit, credit)
+                }
+                Direction::Credit => {
+                    let debit = csv_helpers::make_party_block(&cp_acc, &cp_name);
+                    let credit = csv_helpers::make_party_block(our_account, &our_name);
+                    (debit, credit)
+                }
+            };
+
+            row[4] = debit_block;
+            row[8] = credit_block;
+
+            // Суммы
+            match tx.direction {
+                Direction::Debit => {
+                    row[9] = csv_helpers::format_amount(tx.amount);
+                }
+                Direction::Credit => {
+                    row[13] = csv_helpers::format_amount(tx.amount);
+                }
+            }
+
+            // Назначение платежа
+            row[20] = tx.description.clone();
+
+            wtr.write_record(&row)?;
+        }
+
+        wtr.flush()?;
+        Ok(())
+    }
+}
+
+
+impl Statement {
+    /// Записывает выписку в формате CAMT.053 (XML)
+    pub fn write_camt053<W: Write>(&self, writer: W) -> Result<(), ParseError> {
+        let now = Utc::now();
+        let ccy_code = camt053_helpers::currency_code(&self.currency);
+
+        // Собираем Statement
+        let mut stmt = Camt053Statement::default();
+        stmt.created_at = Some(now.format("%Y-%m-%dT%H:%M:%S").to_string());
+        stmt.period = Some(Camt053Period {
+            from: Some(camt053_helpers::format_iso_date(self.period_from)),
+            to: Some(camt053_helpers::format_iso_date(self.period_until)),
+        });
+        stmt.account = Camt053Account {
+            id: Camt053AccountId {
+                iban: Some(self.account_id.clone()),
+            },
+            name: self.account_name.clone(),
+            currency: Some(ccy_code.to_string()),
+        };
+        stmt.balances = camt053_helpers::balances_from_statement(self, &ccy_code);
+        stmt.entries = camt053_helpers::entries_from_transactions(&self.transactions, &ccy_code);
+
+        // Заворачиваем в Document
+        let doc = Camt053Document {
+            bank_to_customer: Camt053BankToCustomer {
+                group_header: Some(Camt053GroupHeader {
+                    message_id: format!(
+                        "serialized_via_parser-{}",
+                        now.format("%Y%m%d%H%M%S")
+                    ),
+                    created_at: Some(now.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                }),
+                statements: vec![stmt],
+            },
+        };
+
+        to_utf8_io_writer(writer, &doc)?;
+        Ok(())
+    }
+}
+

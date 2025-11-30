@@ -1,8 +1,9 @@
-use std::io::Read;
+use std::io::{Read, Write};
 use chrono::NaiveDate;
-use csv::{ReaderBuilder, StringRecord};
+use csv::{ReaderBuilder, StringRecord, WriterBuilder};
 use crate::error::ParseError;
-use crate::model::{Balance, Currency, Direction, Statement, Transaction};
+use crate::model::{Balance, Direction, Statement, Transaction};
+use crate::utils::{parse_currency, parse_amount};
 
 impl From<csv::Error> for ParseError {
     fn from(e: csv::Error) -> Self {
@@ -30,7 +31,7 @@ impl CsvHeader {
     /// Ожидает строго определённое расположение полей в заголовке
     fn from_string_records(rows: &[StringRecord]) -> Result<Self, ParseError> {
         if rows.len() < 8 {
-            return Err(ParseError::Header("invalid header: not enough rows".to_string()));
+            return Err(ParseError::Header("invalid header: not enough rows".into()));
         }
 
         // хелпер
@@ -133,7 +134,9 @@ impl CsvRecord {
             self.credit_amount.as_deref()
         )?;
         let description = self.transaction_purpose.unwrap_or_default();
-        let counterparty = extract_counterparty_account(&self.debit_account, &self.credit_account, our_account);
+        let (counterparty, counterparty_name) = extract_counterparty_account(
+            &self.debit_account, &self.credit_account, our_account
+        );
 
         Ok(Transaction::new(
             booking_date,
@@ -142,88 +145,54 @@ impl CsvRecord {
             direction,
             description,
             counterparty,
+            counterparty_name,
         ))
     }
 }
 
-/// Берёт первую непустую строку как номер счёта
-fn first_account_line(block: &str) -> Option<&str> {
-    block
+/// Возвращает:
+/// - 1-ю непустую строку как номер счёта
+/// - 3-ю непустую строку как имя контрагента
+fn extract_account_and_name(block: &str) -> (Option<String>, Option<String>) {
+    let lines: Vec<_> = block
         .lines()
-        .map(|l| l.trim())
-        .find(|l| !l.is_empty())
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    let account = lines.get(0).map(|s| (*s).to_string());
+    let name    = lines.get(2).map(|s| (*s).to_string());
+
+    (account, name)
 }
 
-/// Определяет номер счёта контрагента:
-/// - если наш счёт в дебете - контрагент = счёт из кредитового блока
-/// - если наш счёт в кредите - контрагент = счёт из дебетового блока
-/// - иначе - None
+/// Определяет счёт и имя контрагента:
+/// - если наш счёт в дебете - контрагент = (счёт, имя) из кредитового блока
+/// - если наш счёт в кредите - контрагент = (счёт, имя) из дебетового блока
+/// - иначе - (None, None)
 fn extract_counterparty_account(
     debit_block: &str,
     credit_block: &str,
     our_account: &str,
-) -> Option<String> {
-    let debit_acc  = first_account_line(debit_block);
-    let credit_acc = first_account_line(credit_block);
+) -> (Option<String>, Option<String>) {
+    let (debit_acc,  debit_name)  = extract_account_and_name(debit_block);
+    let (credit_acc, credit_name) = extract_account_and_name(credit_block);
 
     // наш счёт в дебете - к нам пришли деньги
-    if let Some(acc) = debit_acc {
+    if let Some(acc) = debit_acc.as_deref() {
         if acc == our_account {
-            return credit_acc.map(|s| s.to_string());
+            return (credit_acc, credit_name);
         }
     }
 
     // наш счёт в кредите - от нас ушли деньги
-    if let Some(acc) = credit_acc {
+    if let Some(acc) = credit_acc.as_deref() {
         if acc == our_account {
-            return debit_acc.map(|s| s.to_string());
+            return (debit_acc, debit_name);
         }
     }
 
-    None
-}
-
-fn parse_amount(raw: &str) -> Result<u64, ParseError> {
-    let cleaned = raw.trim().replace(' ', "").replace(',', ".");
-
-    if cleaned.is_empty() {
-        return Err(ParseError::InvalidAmount("empty amount".to_string()));
-    }
-    if cleaned.starts_with('-'){
-        return Err(ParseError::InvalidAmount(format!("negative amount: {cleaned}")));
-    }
-
-    let mut split = cleaned.split('.');
-    // cleaned точно не пусто, так что ошибки здесь быть не может
-    let int_part = split.next().unwrap();
-    let dec_part = split.next().unwrap_or("");
-    if split.next().is_some() {
-        // больше одной точки — странный формат
-        return Err(ParseError::InvalidAmount(format!("too many dots in amount: {cleaned}")));
-    }
-
-    let int_part: u64 = int_part.parse()?;
-
-    let dec_part: u64 = match dec_part.len() {
-        0 => 0,
-        1 => {
-            let d = dec_part
-                .chars()
-                .next()
-                .and_then(|c| c.to_digit(10))
-                .ok_or_else(|| ParseError::InvalidAmount(format!("invalid fractional part: {cleaned}")))?;
-            d as u64 * 10
-        },
-        2 => {
-            dec_part
-                .parse()?
-        },
-        _ => {
-            return Err(ParseError::InvalidAmount(format!("too many fractional digits in amount: {cleaned}")));
-        }
-    };
-
-    Ok(int_part * 100 + dec_part)
+    (None, None)
 }
 
 fn parse_amount_and_direction(
@@ -348,18 +317,6 @@ fn parse_rus_date(raw: &str) -> Result<NaiveDate, ParseError> {
         .ok_or_else(|| ParseError::Header(format!("invalid date: {raw}")))
 }
 
-fn parse_currency(raw: &str) -> Currency {
-    let s = raw.trim();
-
-    match s {
-        "Российский рубль" => Currency::RUB,
-        "Американский доллар" => Currency::USD,
-        "Евро" => Currency::EUR,
-        "Китайский юань" => Currency::CNY,
-        other => Currency::Other(other.to_string())
-    }
-}
-
 impl TryFrom<CsvData> for Statement {
     type Error = ParseError;
     fn try_from(data: CsvData) -> Result<Self, Self::Error> {
@@ -421,7 +378,7 @@ impl CsvData {
                         let r = next_result?;
                         subheaders_row = Some(r);
                     } else {
-                        return Err(ParseError::Header("unexpected EOF: second header row missing".to_string()));
+                        return Err(ParseError::Header("unexpected EOF: second header row missing".into()));
                     }
 
                     in_data_section = true;
@@ -433,8 +390,8 @@ impl CsvData {
             }
         }
 
-        let headers_row = headers_row.ok_or_else(|| ParseError::Header("table headers row not found".to_string()))?;
-        let subheaders_row = subheaders_row.ok_or_else(|| ParseError::Header("table subheaders row not found".to_string()))?;
+        let headers_row = headers_row.ok_or_else(|| ParseError::Header("table headers row not found".into()))?;
+        let subheaders_row = subheaders_row.ok_or_else(|| ParseError::Header("table subheaders row not found".into()))?;
 
         let header = CsvHeader::from_string_records(&header_rows)?;
         let layout = TableLayout::from_string_records(&headers_row, &subheaders_row)?;
@@ -453,3 +410,4 @@ impl CsvData {
         Ok(CsvData { header, records })
     }
 }
+

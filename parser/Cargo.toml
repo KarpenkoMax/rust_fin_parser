@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 chrono = "0.4.42"
 csv = "1.4.0"
+quick-xml = {version = "0.38.4", features = ["serialize"]}
+serde = { version = "1.0.228", features = ["derive"]}
