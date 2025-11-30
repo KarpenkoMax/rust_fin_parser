@@ -4,6 +4,7 @@ pub mod csv_parser;
 pub mod mt940;
 pub mod camt053;
 pub mod serialization;
+
 mod utils;
 
 pub fn add(left: u64, right: u64) -> u64 {
