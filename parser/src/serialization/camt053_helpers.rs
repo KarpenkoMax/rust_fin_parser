@@ -1,7 +1,10 @@
+use super::common;
+
 use chrono::NaiveDate;
 use crate::model::{Statement, Transaction, Direction, Currency, Balance};
 
 use crate::camt053::serde_models::*;
+
 
 
 /// ISO-код валюты для CAMT (ISO 4217).
@@ -17,14 +20,6 @@ pub(crate) fn currency_code(cur: &Currency) -> &'static str {
 
 pub(crate) fn format_iso_date(d: NaiveDate) -> String {
     d.format("%Y-%m-%d").to_string()
-}
-
-/// CAMT-формат суммы: "1234.56".
-pub(crate) fn format_camt_amount_minor(v: i128) -> String {
-    let v = v.abs() as u128;
-    let units = v / 100;
-    let frac = v % 100;
-    format!("{units}.{frac:02}")
 }
 
 /// Балансы (OPBD / CLBD)
@@ -44,9 +39,9 @@ pub(crate) fn balances_from_statement(stmt: &Statement, ccy_code: &str) -> Vec<C
 
 fn make_balance(code: &str, value: Balance, ccy_code: &str) -> Camt053Balance {
     let (cdt_dbt_ind, amount_str) = if value >= 0 {
-        ("CRDT".to_string(), format_camt_amount_minor(value))
+        ("CRDT".to_string(), common::format_minor_units(value, '.'))
     } else {
-        ("DBIT".to_string(), format_camt_amount_minor(-value))
+        ("DBIT".to_string(), common::format_minor_units(-value, '.'))
     };
 
     Camt053Balance {
@@ -82,7 +77,7 @@ pub(crate) fn entry_from_transaction(tx: &Transaction, ccy_code: &str) -> Camt05
     };
 
     // amount: u64 - считаем, что это "копейки"
-    let amount_str = format_camt_amount_minor(tx.amount as i128);
+    let amount_str = common::format_minor_units(tx.amount, '.');
 
     let booking_date = CamtDateXml {
         date: format_iso_date(tx.booking_date),

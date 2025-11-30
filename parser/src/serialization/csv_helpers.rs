@@ -1,7 +1,6 @@
 use chrono::Datelike;
 use crate::model::Currency;
 
-
 const COLS: usize = 23;
 
 
@@ -38,13 +37,6 @@ pub(crate) fn currency_label(cur: &Currency) -> String {
         Currency::CNY => "Китайский юань".to_string(),
         Currency::Other(s) => s.clone(),
     }
-}
-
-pub(crate) fn format_amount(amount: u64) -> String {
-    let v = amount; // если amount уже в "копейках" - оставляем так
-    let rub = v / 100;
-    let kop = v % 100;
-    format!("{rub}.{kop:02}")
 }
 
 // Блок с реквизитами стороны: делаем 3 непустые строки,

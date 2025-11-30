@@ -1,5 +1,6 @@
 mod csv_helpers;
 mod camt053_helpers;
+mod common;
 
 use std::io::Write;
 use chrono::Utc;
@@ -134,10 +135,10 @@ impl Statement {
             // Суммы
             match tx.direction {
                 Direction::Debit => {
-                    row[9] = csv_helpers::format_amount(tx.amount);
+                    row[9] = common::format_minor_units(tx.amount, '.');
                 }
                 Direction::Credit => {
-                    row[13] = csv_helpers::format_amount(tx.amount);
+                    row[13] = common::format_minor_units(tx.amount, '.');
                 }
             }
 
