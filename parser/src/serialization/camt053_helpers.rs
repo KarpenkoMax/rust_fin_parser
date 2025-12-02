@@ -6,7 +6,6 @@ use crate::model::{Statement, Transaction, Direction, Currency, Balance};
 use crate::camt053::serde_models::*;
 
 
-
 /// ISO-код валюты для CAMT (ISO 4217).
 pub(crate) fn currency_code(cur: &Currency) -> &'static str {
     match cur {
@@ -14,7 +13,10 @@ pub(crate) fn currency_code(cur: &Currency) -> &'static str {
         Currency::EUR => "EUR",
         Currency::USD => "USD",
         Currency::CNY => "CNY",
-        Currency::Other(_) => "???",
+        Currency::Other(c) => {
+            println!("found unknown currency {c} while converting to camt053. using placeholder '???'");
+            "???"
+        },
     }
 }
 
@@ -59,8 +61,7 @@ fn make_balance(code: &str, value: Balance, ccy_code: &str) -> Camt053Balance {
     }
 }
 
-// ---------- Операции -> Ntry ----------
-
+///  Преобразует транзакции в Ntry
 pub(crate) fn entries_from_transactions(
     txs: &[Transaction],
     ccy_code: &str,
