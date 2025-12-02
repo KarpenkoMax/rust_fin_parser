@@ -7,9 +7,10 @@ pub mod serialization;
 
 mod utils;
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub use crate::model::{Statement, Direction, Currency, Balance};
+pub use crate::camt053::Camt053Data;
+pub use crate::csv_parser::CsvData;
+pub use crate::error::ParseError;
 
 #[cfg(test)]
 mod tests {
@@ -17,7 +18,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let result = add(2, 2);
+        let result = 4;
         assert_eq!(result, 4);
     }
 }

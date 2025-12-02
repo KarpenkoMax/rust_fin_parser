@@ -81,7 +81,7 @@ pub struct Camt053GroupHeader {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct CamtAmtXml {
-    #[serde(rename = "Ccy")]
+    #[serde(rename = "@Ccy")]
     pub currency: String,
 
     #[serde(rename = "$text")]
@@ -137,7 +137,7 @@ pub struct CamtTransactionAmount {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct CamtMoney {
     /// Атрибут Ccy="EUR"/"DKK"
-    #[serde(rename = "Ccy")]
+    #[serde(rename = "@Ccy")]
     pub currency: String,
 
     #[serde(rename = "$text")]

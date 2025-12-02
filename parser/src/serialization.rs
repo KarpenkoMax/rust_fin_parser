@@ -1,7 +1,6 @@
 mod csv_helpers;
 mod camt053_helpers;
 mod common;
-
 use std::io::Write;
 use chrono::Utc;
 use csv::WriterBuilder;
@@ -22,64 +21,7 @@ impl Statement {
 
         // ---- ШАПКА ----
 
-        let now = Utc::now();
-
-        let mut row0 = csv_helpers::empty_row();
-        row0[0] = now.format("%d.%m.%Y").to_string();
-        wtr.write_record(&row0)?;
-
-        let mut row1 = csv_helpers::empty_row();
-        row1[5] = "СберБизнес. экспорт выписки".to_string();
-        wtr.write_record(&row1)?;
-
-        let mut row2 = csv_helpers::empty_row();
-        row2[1] = "ПАО СБЕРБАНК".to_string();
-        wtr.write_record(&row2)?;
-
-        let mut row3 = csv_helpers::empty_row();
-        row3[1] = format!(
-            "Дата формирования выписки {} в {}",
-            now.format("%d.%m.%Y"),
-            now.format("%H:%M:%S"),
-        );
-        wtr.write_record(&row3)?;
-
-        let mut row4 = csv_helpers::empty_row();
-        row4[1] = "ВЫПИСКА ОПЕРАЦИЙ ПО ЛИЦЕВОМУ СЧЕТУ".to_string();
-        row4[12] = self.account_id.clone();
-        wtr.write_record(&row4)?;
-
-        let mut row5 = csv_helpers::empty_row();
-        row5[12] = self.account_name.clone().unwrap_or_default();
-        wtr.write_record(&row5)?;
-
-        let mut row6 = csv_helpers::empty_row();
-        let period_from_str =
-            format!("за период с {}", csv_helpers::format_rus_date(self.period_from));
-        let period_until_str =
-            format!("по {}", csv_helpers::format_rus_date(self.period_until));
-
-        row6[2] = period_from_str;
-        row6[14] = "по".to_string();
-        row6[15] = period_until_str;
-        wtr.write_record(&row6)?;
-
-        let mut row7 = csv_helpers::empty_row();
-        row7[2] = csv_helpers::currency_label(&self.currency);
-
-        if let Some(last_date) =
-            self.transactions.iter().map(|t| t.booking_date).max()
-        {
-            row7[12] = format!(
-                "Дата предыдущей операции по счету {}",
-                csv_helpers::format_rus_date(last_date)
-            );
-        }
-
-        wtr.write_record(&row7)?;
-
-        // row 8 - пустая строка перед таблицей
-        wtr.write_record(&csv_helpers::empty_row())?;
+        csv_helpers::write_header(&mut wtr, self)?;
 
         // ---- ТАБЛИЦА ОПЕРАЦИЙ ----
 
@@ -148,13 +90,14 @@ impl Statement {
             wtr.write_record(&row)?;
         }
 
+        // ---- Footer ----
+        csv_helpers::write_footer(&mut wtr, self)?;
+
         wtr.flush()?;
         Ok(())
     }
-}
 
 
-impl Statement {
     /// Записывает выписку в формате CAMT.053 (XML)
     pub fn write_camt053<W: Write>(&self, writer: W) -> Result<(), ParseError> {
         let now = Utc::now();

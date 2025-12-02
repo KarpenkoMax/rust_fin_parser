@@ -1,9 +1,12 @@
-use std::io::{Read, Write};
+mod utils;
+
+use std::io::{Read};
 use chrono::NaiveDate;
-use csv::{ReaderBuilder, StringRecord, WriterBuilder};
+use csv::{ReaderBuilder, StringRecord};
 use crate::error::ParseError;
-use crate::model::{Balance, Direction, Statement, Transaction};
-use crate::utils::{parse_currency, parse_amount};
+use crate::model::{Balance, Statement, Transaction};
+use crate::utils::parse_currency;
+use utils::*;
 
 impl From<csv::Error> for ParseError {
     fn from(e: csv::Error) -> Self {
@@ -150,67 +153,42 @@ impl CsvRecord {
     }
 }
 
-/// Возвращает:
-/// - 1-ю непустую строку как номер счёта
-/// - 3-ю непустую строку как имя контрагента
-fn extract_account_and_name(block: &str) -> (Option<String>, Option<String>) {
-    let lines: Vec<_> = block
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect();
-
-    let account = lines.get(0).map(|s| (*s).to_string());
-    let name    = lines.get(2).map(|s| (*s).to_string());
-
-    (account, name)
+pub struct CsvFooter {
+    opening_balance: Balance,
+    closing_balance: Balance,
 }
 
-/// Определяет счёт и имя контрагента:
-/// - если наш счёт в дебете - контрагент = (счёт, имя) из кредитового блока
-/// - если наш счёт в кредите - контрагент = (счёт, имя) из дебетового блока
-/// - иначе - (None, None)
-fn extract_counterparty_account(
-    debit_block: &str,
-    credit_block: &str,
-    our_account: &str,
-) -> (Option<String>, Option<String>) {
-    let (debit_acc,  debit_name)  = extract_account_and_name(debit_block);
-    let (credit_acc, credit_name) = extract_account_and_name(credit_block);
+impl CsvFooter {
+    fn from_string_records(rows: &[StringRecord]) -> Result<Self, ParseError> {
+        let mut opening: Option<Balance> = None;
+        let mut closing: Option<Balance> = None;
 
-    // наш счёт в дебете - к нам пришли деньги
-    if let Some(acc) = debit_acc.as_deref() {
-        if acc == our_account {
-            return (credit_acc, credit_name);
+        for row in rows {
+            let title = row.get(1).unwrap_or("").trim();
+
+            match title {
+                "Входящий остаток" => {
+                    opening = Some(parse_footer_balance(row)?);
+                }
+                "Исходящий остаток" => {
+                    closing = Some(parse_footer_balance(row)?);
+                }
+                _ => {}
+            }
         }
-    }
 
-    // наш счёт в кредите - от нас ушли деньги
-    if let Some(acc) = credit_acc.as_deref() {
-        if acc == our_account {
-            return (debit_acc, debit_name);
-        }
-    }
+        let opening_balance = opening.ok_or_else(|| {
+            ParseError::Header("opening balance not found in footer".into())
+        })?;
 
-    (None, None)
-}
+        let closing_balance = closing.ok_or_else(|| {
+            ParseError::Header("closing balance not found in footer".into())
+        })?;
 
-fn parse_amount_and_direction(
-    debit: Option<&str>,
-    credit: Option<&str>,
-) -> Result<(u64, Direction), ParseError> {
-    match (debit, credit) {
-        (Some(d), None) => {
-            let amount = parse_amount(d)?;
-            let direction = Direction::Debit;
-            Ok((amount, direction))
-        },
-        (None, Some(c)) => {
-            let amount = parse_amount(c)?;
-            let direction = Direction::Credit;
-            Ok((amount, direction))
-        },
-        _ => Err(ParseError::AmountSideConflict)
+        Ok(CsvFooter {
+            opening_balance,
+            closing_balance,
+        })
     }
 }
 
@@ -227,17 +205,6 @@ struct TableLayout {
     operation_type_col: usize,
     bank_col: usize,
     transaction_purpose_col: usize,
-}
-
-/// Ищет индекс колонки, содержащей текст
-/// 
-/// Возвращает первый найденный, если не находит - возвращает ошибку
-fn find_col(row: &StringRecord, needle: &str) -> Result<usize, ParseError> {
-    row.iter()
-        .position(|field| field.contains(needle))
-        .ok_or_else(|| ParseError::Header(
-            format!("column with header containing '{needle}' not found")
-        ))
 }
 
 impl TableLayout {
@@ -273,6 +240,7 @@ impl TableLayout {
 pub struct CsvData {
     header: CsvHeader,
     records: Vec<CsvRecord>,
+    footer: CsvFooter,
 }
 
 fn parse_rus_date(raw: &str) -> Result<NaiveDate, ParseError> {
@@ -323,8 +291,8 @@ impl TryFrom<CsvData> for Statement {
         let account_id = data.header.client_account;
         let account_name = Some(data.header.client_name);
         let currency = parse_currency(&data.header.currency);
-        let opening_balance: Option<Balance> = None;
-        let closing_balance: Option<Balance> = None;
+        let opening_balance: Option<Balance> = Some(data.footer.opening_balance);
+        let closing_balance: Option<Balance> = Some(data.footer.closing_balance);
         let period_from = data.header.period_from.trim_start_matches("за период с").trim();
         let period_until = data.header.period_until.trim_start_matches("по").trim();
 
@@ -357,6 +325,7 @@ impl CsvData {
 
         let mut header_rows: Vec<StringRecord> = Vec::new();
         let mut data_rows: Vec<StringRecord> = Vec::new();
+        let mut footer_rows: Vec<StringRecord> = Vec::new();
 
         let mut in_data_section = false;
 
@@ -386,12 +355,27 @@ impl CsvData {
                     header_rows.push(record);
                 }
             } else {
-                data_rows.push(record);
+                // footer
+                if is_footer_row(&record) {
+                    footer_rows.push(record);
+
+                    for result in records_iter {
+                        footer_rows.push(result?);
+                    }
+
+                    break;
+                } else {
+                    data_rows.push(record);
+                }
             }
         }
 
         let headers_row = headers_row.ok_or_else(|| ParseError::Header("table headers row not found".into()))?;
         let subheaders_row = subheaders_row.ok_or_else(|| ParseError::Header("table subheaders row not found".into()))?;
+
+        if footer_rows.is_empty() {
+            return Err(ParseError::Header("footer rows not found".into()));
+        }
 
         let header = CsvHeader::from_string_records(&header_rows)?;
         let layout = TableLayout::from_string_records(&headers_row, &subheaders_row)?;
@@ -407,7 +391,9 @@ impl CsvData {
             records.push(rec);
         }
 
-        Ok(CsvData { header, records })
+        let footer = CsvFooter::from_string_records(&footer_rows)?;
+
+        Ok(CsvData { header, records, footer })
     }
 }
 
