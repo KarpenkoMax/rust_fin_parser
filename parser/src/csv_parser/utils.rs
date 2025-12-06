@@ -108,10 +108,24 @@ pub(crate) fn is_footer_row(row: &StringRecord) -> bool {
 /// 
 /// Возвращает первый найденный, если не находит - возвращает ошибку
 pub(crate) fn find_col(row: &StringRecord, needle: &str) -> Result<usize, ParseError> {
-    row.iter()
+    // сначала ищем точное совпадение
+    if let Some(idx) = row
+        .iter()
+        .position(|field| field.trim() == needle)
+    {
+        return Ok(idx);
+    }
+
+    // точного совпадения нет
+    if let Some(idx) = row
+        .iter()
         .position(|field| field.contains(needle))
-        .ok_or_else(|| ParseError::Header(
-            format!("column with header containing '{needle}' not found")
-        ))
+    {
+        return Ok(idx);
+    }
+
+    Err(ParseError::Header(
+        format!("column with header equal to or containing '{needle}' not found"),
+    ))
 }
 

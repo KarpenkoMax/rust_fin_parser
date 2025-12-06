@@ -14,13 +14,13 @@ use utils::*;
 
 impl From<DeError> for ParseError {
     fn from(e: DeError) -> Self {
-        ParseError::CamtDe(e)
+        ParseError::XmlDe(e)
     }
 }
 
 impl From<SeError> for ParseError {
     fn from(e: SeError) -> Self {
-        ParseError::CamtSe(e)
+        ParseError::XmlSe(e)
     }
 }
 
@@ -48,7 +48,7 @@ impl Camt053Data {
                 .ok_or_else(|| ParseError::BadInput("CAMT file has no <Stmt>".into()))?;
 
             if stmt_iter.next().is_some() {
-                eprintln!("more than one statement provided in camt053. only reading first");
+                eprintln!("more than one statement provided to camt053 parser. only reading first");
             }
 
             return Ok(Camt053Data { statement: stmt });
@@ -70,7 +70,7 @@ impl TryFrom<&Camt053Entry> for Transaction {
             "DBIT" => Direction::Debit,
             other => {
                 return Err(ParseError::InvalidAmount(format!(
-                    "unknown CdtDbtInd: {other}"
+                    "unknown direction (CdtDbtInd): {other}"
                 )));
             }
         };
@@ -110,22 +110,31 @@ impl TryFrom<&Camt053Entry> for Transaction {
 
 impl TryFrom<Camt053Data> for Statement {
     type Error = ParseError;
+
     fn try_from(data: Camt053Data) -> Result<Self, Self::Error> {
-        let account_id = data
-            .statement
+        Ok(
+            Statement::try_from(data.statement)?
+        )
+    }
+}
+
+impl TryFrom<Camt053Statement> for Statement {
+    type Error = ParseError;
+    fn try_from(statement: Camt053Statement) -> Result<Self, Self::Error> {
+        let account_id = statement
             .account
             .id
             .iban
             .clone()
             .unwrap_or_else(|| "not provided".to_string());
 
-        let account_name = data.statement.account.name.clone();
+        let account_name = statement.account.name.clone();
 
-        let currency = detect_currency(&data.statement)?;
-        let (opening_balance, closing_balance) = extract_balances(&data.statement);
-        let (period_from, period_until) = detect_period(&data.statement)?;
+        let currency = detect_currency(&statement)?;
+        let (opening_balance, closing_balance) = extract_balances(&statement);
+        let (period_from, period_until) = detect_period(&statement)?;
 
-        let transactions: Vec<Transaction> = data.statement
+        let transactions: Vec<Transaction> = statement
             .entries
             .iter()
             .map(|e| e.try_into())

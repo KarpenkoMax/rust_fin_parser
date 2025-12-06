@@ -10,6 +10,7 @@ mod utils;
 pub use crate::model::{Statement, Direction, Currency, Balance};
 pub use crate::camt053::Camt053Data;
 pub use crate::csv_parser::CsvData;
+pub use crate::mt940::Mt940Data;
 pub use crate::error::ParseError;
 
 #[cfg(test)]

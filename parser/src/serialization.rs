@@ -6,6 +6,7 @@ use chrono::Utc;
 use csv::WriterBuilder;
 use crate::error::ParseError;
 use crate::model::{Statement, Direction};
+mod mt940_helpers;
 
 use quick_xml::se::to_utf8_io_writer;
 use crate::camt053::serde_models::*;
@@ -135,6 +136,77 @@ impl Statement {
         };
 
         to_utf8_io_writer(writer, &doc)?;
+        Ok(())
+    }
+
+    /// Записывает выписку в формате MT940
+    pub fn write_mt940<W: Write>(&self, mut writer: W) -> Result<(), ParseError> {
+        writeln!(writer, "{{4:")?;
+
+        // ---- Заголовочные теги ----
+
+        // :20: Transaction Reference - плейсхолдер
+        writeln!(writer, ":20:SERIALIZED")?;
+
+        // :25: Account Identification - наш счёт
+        writeln!(writer, ":25:{}", self.account_id)?;
+
+        // :28C: Statement Number - плейсхолдер "1/1"
+        writeln!(writer, ":28C:1/1")?;
+
+        // ---- :60F: Opening Balance ----
+
+        let ccy_code = mt940_helpers::currency_code(&self.currency);
+
+        let opening_minor: i128 = self.opening_balance.unwrap_or(0);
+        let (opening_dc, opening_abs) = if opening_minor >= 0 {
+            ('C', opening_minor)
+        } else {
+            ('D', -opening_minor)
+        };
+        let opening_abs_u = opening_abs as u64;
+        let opening_amount_str = common::format_minor_units(opening_abs_u, ',');
+
+        let opening_date_str = mt940_helpers::format_yymmdd(self.period_from);
+
+        writeln!(
+            writer,
+            ":60F:{opening_dc}{opening_date_str}{ccy_code}{opening_amount_str}"
+        )?;
+
+        // ---- :61: / :86: Transactions ----
+
+        for tx in &self.transactions {
+            let line_61 = mt940_helpers::format_61_line(tx);
+            writeln!(writer, ":61:{line_61}")?;
+
+            if let Some(info) = mt940_helpers::format_86_line(tx) {
+                writeln!(writer, ":86:{info}")?;
+            }
+        }
+
+        // ---- :62F: Closing Balance ----
+
+        if let Some(closing_minor) = self.closing_balance {
+            let (closing_dc, closing_abs) = if closing_minor >= 0 {
+                ('C', closing_minor)
+            } else {
+                ('D', -closing_minor)
+            };
+            let closing_abs_u = closing_abs as u64;
+            let closing_amount_str = common::format_minor_units(closing_abs_u, ',');
+
+            let closing_date_str = mt940_helpers::format_yymmdd(self.period_until);
+
+            writeln!(
+                writer,
+                ":62F:{closing_dc}{closing_date_str}{ccy_code}{closing_amount_str}"
+            )?;
+        }
+
+        // Закрываем блок 4
+        writeln!(writer, "-}}")?;
+
         Ok(())
     }
 }

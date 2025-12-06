@@ -62,7 +62,7 @@ pub(crate) fn write_header<W: Write>(
     let now = Utc::now();
 
     let mut row0 = empty_row();
-    row0[0] = now.format("%d.%m.%Y").to_string();
+    row0[1] = now.format("%d.%m.%Y").to_string();
     wtr.write_record(&row0)?;
 
     let mut row1 = empty_row();

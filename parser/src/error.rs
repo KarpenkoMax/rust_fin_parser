@@ -6,8 +6,8 @@ use quick_xml::{de::DeError, se::SeError};
 pub enum ParseError {
     // обёртки
     Csv(csv::Error),
-    CamtDe(DeError),
-    CamtSe(SeError),
+    XmlDe(DeError),
+    XmlSe(SeError),
     Date(chrono::ParseError),
     Int(std::num::ParseIntError),
     Io(IoError),
@@ -20,14 +20,15 @@ pub enum ParseError {
     AmountSideConflict, // и дебет, и кредит, или ни одного
     Header(String),
     BadInput(String),
+    Mt940Tag(String),
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseError::Csv(e) => write!(f, "CSV error: {e}"),
-            ParseError::CamtDe(e) => write!(f, "Camt deserialization error: {e}"),
-            ParseError::CamtSe(e) => write!(f, "Camt serialization error: {e}"),
+            ParseError::XmlDe(e) => write!(f, "Xml deserialization error: {e}"),
+            ParseError::XmlSe(e) => write!(f, "Xml serialization error: {e}"),
             ParseError::Date(e) => write!(f, "date parse error: {e}"),
             ParseError::Int(e) => write!(f, "number parse error: {e}"),
             ParseError::Io(e) => write!(f, "io error: {e}"),
@@ -40,6 +41,7 @@ impl fmt::Display for ParseError {
             }
             ParseError::Header(msg) => write!(f, "invalid header: {msg}"),
             ParseError::BadInput(msg) => write!(f, "bad input: {msg}"),
+            ParseError::Mt940Tag(msg) => write!(f, "bad mt940 tag: {msg}"),
         }
     }
 }
@@ -48,8 +50,8 @@ impl Error for ParseError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             ParseError::Csv(e) => Some(e),
-            ParseError::CamtDe(e) => Some(e),
-            ParseError::CamtSe(e) => Some(e),
+            ParseError::XmlDe(e) => Some(e),
+            ParseError::XmlSe(e) => Some(e),
             ParseError::Date(e) => Some(e),
             ParseError::Int(e) => Some(e),
             ParseError::Io(e) => Some(e),

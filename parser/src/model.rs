@@ -1,6 +1,6 @@
 
 use chrono::NaiveDate;
-
+use std::fmt;
 pub type Balance = i128;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,16 +12,16 @@ pub enum Currency {
     Other(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Statement {
-    pub(crate) account_id: String,
-    pub(crate) account_name: Option<String>,
-    pub(crate) currency: Currency,
-    pub(crate) opening_balance: Option<Balance>,
-    pub(crate) closing_balance: Option<Balance>,
-    pub(crate) transactions: Vec<Transaction>,
-    pub(crate) period_from: NaiveDate,
-    pub(crate) period_until: NaiveDate,
+    pub account_id: String,
+    pub account_name: Option<String>,
+    pub currency: Currency,
+    pub opening_balance: Option<Balance>,
+    pub closing_balance: Option<Balance>,
+    pub transactions: Vec<Transaction>,
+    pub period_from: NaiveDate,
+    pub period_until: NaiveDate,
 }
 
 impl Statement {
@@ -54,17 +54,17 @@ pub enum Direction {
     Credit,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Transaction {
-    pub(crate) booking_date: NaiveDate,
-    pub(crate) value_date: Option<NaiveDate>,
-    pub(crate) amount: u64,
-    pub(crate) direction: Direction,
-    pub(crate) description: String,
+    pub booking_date: NaiveDate,
+    pub value_date: Option<NaiveDate>,
+    pub amount: u64,
+    pub direction: Direction,
+    pub description: String,
     // id
-    pub(crate) counterparty: Option<String>,
+    pub counterparty: Option<String>,
     // name
-    pub(crate) counterparty_name: Option<String>,
+    pub counterparty_name: Option<String>,
 }
 
 
@@ -87,5 +87,46 @@ impl Transaction {
             counterparty,
             counterparty_name,
         }
+    }
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Direction::Credit => write!(f, "Credit"),
+            Direction::Debit  => write!(f, "Debit"),
+        }
+    }
+}
+
+
+impl fmt::Display for Transaction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value_date_str = self
+            .value_date
+            .map(|d| d.to_string())
+            .unwrap_or_default();
+
+        let counterparty_str = self
+            .counterparty
+            .as_deref()
+            .unwrap_or("");
+
+        let counterparty_name_str = self
+            .counterparty_name
+            .as_deref()
+            .unwrap_or("");
+
+        write!(
+            f,
+            "{:<10} {:<10} {:<6} {:>15} {} {} {}",
+            self.booking_date,
+            value_date_str,
+            self.direction,
+            self.amount,
+            counterparty_str,
+            counterparty_name_str,
+            self.description,
+        )
     }
 }
