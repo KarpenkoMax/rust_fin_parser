@@ -1,25 +1,114 @@
-pub mod error;
-pub mod model;
-pub mod csv_parser;
-pub mod mt940;
-pub mod camt053;
-pub mod serialization;
+//! Парсер банковских выписок в общую модель [`Statement`].
+//!
+//! Библиотека предоставляет единый API для чтения выписок из
+//! различных банковских форматов и преобразования их в абстрактную
+//! модель [`Statement`], одинаковую для всех источников.
+//!
+//! Поддерживаемые форматы:
+//! - **CSV** - табличные выгрузки;
+//! - **CAMT.053 XML** - стандарт ISO 20022;
+//! - **MT940** - формат SWIFT.
+//!
+//! # Основные типы
+//!
+//! - [`Statement`] - нормализованная модель выписки.
+//! - [`Transaction`] - отдельная операция.
+//! - [`Currency`], [`Direction`], [`Balance`] - вспомогательные типы.
+//!
+//! Для разбора конкретного формата используются:
+//!
+//! - [`CsvData`],
+//! - [`Camt053Data`],
+//! - [`Mt940Data`].
+//!
+//! Каждый из них имеет метод `parse(reader)` для любого `impl Read`.
+//! Для преобразования в [`Statement`] реализован трейт `TryFrom<...>`.
+//!
+//! # Сериализация
+//!
+//! Модуль [`serialization`] предоставляет методы записи [`Statement`]
+//! обратно в поддерживаемые форматы (CSV / CAMT.053 / MT940):
+//!
+//! - `Statement::write_csv(writer)`  
+//! - `Statement::write_camt053(writer)`  
+//! - `Statement::write_mt940(writer)`  
+//!
+//! Все функции принимают любой `impl Write`, поэтому могут выводить
+//! как в файл, так и в память или сетевой поток.
+//!
+//! # Пример
+//!
+//! ```no_run
+//! use parser::{CsvData, Statement};
+//! use std::fs::File;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Чтение выписки в формате CSV
+//!     let file = File::open("statement.csv")?;
+//!     let csv = CsvData::parse(file)?;
+//!     let statement = Statement::try_from(csv)?;
+//!
+//!     println!("Всего операций: {}", statement.transactions.len());
+//!
+//!     // Сериализация в CAMT.053
+//!     let mut camt_out = File::create("statement.xml")?;
+//!     statement.write_camt053(&mut camt_out)?;
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Принятые допущения
+//!
+//! - **Берётся только первый `Statement`**  
+//!   Многие форматы позволяют содержать несколько выписок в одном файле.  
+//!   Внутренний парсер может вернуть несколько [`Statement`], но
+//!   текущие CLI-утилиты используют **только первый**, остальные игнорируются.
+//!
+//! - **Одна логическая выписка на файл**  
+//!   Ожидается, что входной файл содержит выписку по одному счёту.  
+//!   Если файл объединяет несколько счетов, результат может быть
+//!   неполным или неожиданным.
+//!
+//! - **Одна валюта на выписку**  
+//!   Валюта определяется по счёту, затем по балансам, затем по первой операции.  
+//!   Считается, что все операции в рамках [`Statement`] в одной валюте.
+//!
+//! - **CSV привязан к конкретному банку**  
+//!   CSV-парсер ожидает фиксированный формат и порядок колонок.  
+//!   Файлы с иной структурой могут приводить к ошибкам разбора.
+//!
+//! - **Кодировка UTF-8**  
+//!   Предполагается, что входные файлы - UTF-8.  
+//!   Другие кодировки необходимо конвертировать заранее.
+//!
+//! - **Потеря данных**  
+//!   В ряде форматов (особенно MT940) допускается потеря менее значимых
+//!   полей при нормализации.
+//!
 
+mod error;
+mod model;
+mod csv_parser;
+mod mt940;
+mod camt053;
+mod serialization;
 mod utils;
 
-pub use crate::model::{Statement, Direction, Currency, Balance};
-pub use crate::camt053::Camt053Data;
-pub use crate::csv_parser::CsvData;
-pub use crate::mt940::Mt940Data;
+// Публичные типы верхнего уровня
+
 pub use crate::error::ParseError;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use crate::model::{
+    Balance,
+    Currency,
+    Direction,
+    Statement,
+    Transaction,
+};
 
-    #[test]
-    fn it_works() {
-        let result = 4;
-        assert_eq!(result, 4);
-    }
-}
+// Формат-специфические структуры-обёртки и их `parse()`
+
+pub use crate::csv_parser::CsvData;
+pub use crate::camt053::Camt053Data;
+pub use crate::mt940::Mt940Data;

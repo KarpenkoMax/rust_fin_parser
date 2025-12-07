@@ -106,6 +106,15 @@ impl Statement {
 
         // Собираем Statement
         let mut stmt = Camt053Statement::default();
+
+        stmt.id = Some(format!(
+            "stmt-{}-{}",
+            self.account_id,
+            now.format("%Y%m%d%H%M%S")
+        ));
+
+        stmt.sequence_number = Some(1);
+
         stmt.created_at = Some(now.format("%Y-%m-%dT%H:%M:%S").to_string());
         stmt.period = Some(Camt053Period {
             from: Some(camt053_helpers::format_iso_date(self.period_from)),

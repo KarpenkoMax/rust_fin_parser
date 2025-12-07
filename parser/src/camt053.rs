@@ -152,3 +152,255 @@ impl TryFrom<Camt053Statement> for Statement {
         ))
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Currency};
+    use chrono::NaiveDate;
+    use std::io::Cursor;
+
+    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    }
+
+    // Camt053Data::parse
+
+    #[test]
+    fn parse_full_document_with_single_stmt() {
+        let xml = r#"
+        <Document>
+          <BkToCstmrStmt>
+            <Stmt>
+              <Acct>
+                <Id>
+                  <IBAN>DE1234567890</IBAN>
+                </Id>
+                <Nm>Test Account</Nm>
+                <Ccy>EUR</Ccy>
+              </Acct>
+              <Bal>
+                <Tp>
+                  <CdOrPrtry>
+                    <Cd>OPBD</Cd>
+                  </CdOrPrtry>
+                </Tp>
+                <Amt Ccy="EUR">100.00</Amt>
+                <CdtDbtInd>CRDT</CdtDbtInd>
+                <Dt>
+                  <Dt>2023-01-01</Dt>
+                </Dt>
+              </Bal>
+              <FrToDt>
+                <FrDtTm>2023-01-01T00:00:00</FrDtTm>
+                <ToDtTm>2023-01-31T00:00:00</ToDtTm>
+              </FrToDt>
+            </Stmt>
+          </BkToCstmrStmt>
+        </Document>
+        "#;
+
+        let cursor = Cursor::new(xml.as_bytes());
+        let data = Camt053Data::parse(cursor).expect("parse must succeed");
+
+        // Проверяем, что прочитан именно Stmt внутри Document
+        let stmt = data.statement;
+        assert_eq!(
+            stmt.account.id.iban.as_deref(),
+            Some("DE1234567890")
+        );
+        assert_eq!(stmt.account.name.as_deref(), Some("Test Account"));
+        assert_eq!(stmt.account.currency.as_deref(), Some("EUR"));
+    }
+
+    #[test]
+    fn parse_root_stmt_without_document() {
+        let xml = r#"
+        <Stmt>
+          <Acct>
+            <Id>
+              <IBAN>DE0000000000</IBAN>
+            </Id>
+            <Nm>Root Stmt</Nm>
+            <Ccy>USD</Ccy>
+          </Acct>
+        </Stmt>
+        "#;
+
+        let cursor = Cursor::new(xml.as_bytes());
+        let data = Camt053Data::parse(cursor).expect("parse must succeed");
+
+        assert_eq!(
+            data.statement.account.id.iban.as_deref(),
+            Some("DE0000000000")
+        );
+        assert_eq!(data.statement.account.name.as_deref(), Some("Root Stmt"));
+        assert_eq!(data.statement.account.currency.as_deref(), Some("USD"));
+    }
+
+    #[test]
+    fn parse_document_without_stmt_returns_error() {
+        let xml = r#"
+        <Document>
+          <BkToCstmrStmt>
+            <!-- нет Stmt -->
+          </BkToCstmrStmt>
+        </Document>
+        "#;
+
+        let cursor = Cursor::new(xml.as_bytes());
+        let err = Camt053Data::parse(cursor).unwrap_err();
+
+        // Должен быть BadInput с текстом про отсутствие Stmt
+        match err {
+            ParseError::BadInput(msg) => {
+                assert!(
+                    msg.contains("no <Stmt>"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected BadInput, got {other:?}"),
+        }
+    }
+
+    // TryFrom<&Camt053Entry> for Transaction
+
+    fn make_simple_entry(cdt_dbt: &str) -> Camt053Entry {
+        Camt053Entry {
+            amount: CamtAmtXml {
+                currency: "EUR".to_string(),
+                value: "123.45".to_string(),
+            },
+            cdt_dbt_ind: cdt_dbt.to_string(),
+            booking_date: CamtDateXml {
+                date: "2023-01-10".to_string(),
+            },
+            value_date: CamtDateXml {
+                date: "2023-01-11".to_string(),
+            },
+            details: None,
+        }
+    }
+
+    #[test]
+    fn entry_to_transaction_credit() {
+        let entry = make_simple_entry("CRDT");
+
+        let tx = Transaction::try_from(&entry).expect("conversion must succeed");
+
+        assert_eq!(tx.direction, Direction::Credit);
+        assert_eq!(tx.amount, 12345); // 123.45 → 12345
+        assert_eq!(tx.booking_date, d(2023, 1, 10));
+        assert_eq!(tx.value_date, Some(d(2023, 1, 11)));
+
+        // без details - пустое описание и нет контрагентов
+        assert_eq!(tx.description, "");
+        assert!(tx.counterparty.is_none());
+        assert!(tx.counterparty_name.is_none());
+    }
+
+    #[test]
+    fn entry_to_transaction_debit() {
+        let entry = make_simple_entry("DBIT");
+
+        let tx = Transaction::try_from(&entry).expect("conversion must succeed");
+
+        assert_eq!(tx.direction, Direction::Debit);
+        assert_eq!(tx.amount, 12345);
+    }
+
+    #[test]
+    fn entry_with_unknown_direction_returns_error() {
+        let mut entry = make_simple_entry("CRDT");
+        entry.cdt_dbt_ind = "WTF".to_string();
+
+        let err = Transaction::try_from(&entry).unwrap_err();
+        match err {
+            ParseError::InvalidAmount(msg) => {
+                assert!(
+                    msg.contains("unknown direction"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected InvalidAmount, got {other:?}"),
+        }
+    }
+
+    // TryFrom<Camt053Statement> / Camt053Data for Statement
+
+    fn sample_camt_statement() -> Camt053Statement {
+        // Один entry, чтобы была хотя бы 1 транзакция
+        let entry = Camt053Entry {
+            amount: CamtAmtXml {
+                currency: "EUR".to_string(),
+                value: "10.00".to_string(),
+            },
+            cdt_dbt_ind: "CRDT".to_string(),
+            booking_date: CamtDateXml {
+                date: "2023-01-05".to_string(),
+            },
+            value_date: CamtDateXml {
+                date: "2023-01-06".to_string(),
+            },
+            details: None,
+        };
+
+        Camt053Statement {
+            id: Some("STMTID".to_string()),
+            sequence_number: Some(1),
+            created_at: None,
+            period: None, // допустим, detect_period сам разберется по Ntry
+            account: Camt053Account {
+                id: Camt053AccountId {
+                    iban: Some("DE1111222233334444".to_string()),
+                },
+                name: Some("Sample Account".to_string()),
+                currency: Some("EUR".to_string()),
+            },
+            balances: Vec::new(),
+            entries: vec![entry],
+        }
+    }
+
+    #[test]
+    fn statement_from_camt_statement_maps_basic_fields() {
+        let camt_stmt = sample_camt_statement();
+
+        let stmt = Statement::try_from(camt_stmt).expect("conversion must succeed");
+
+        assert_eq!(stmt.account_id, "DE1111222233334444");
+        assert_eq!(stmt.account_name.as_deref(), Some("Sample Account"));
+        assert_eq!(stmt.currency, Currency::EUR);
+
+        assert_eq!(stmt.transactions.len(), 1);
+        let tx = &stmt.transactions[0];
+
+        assert_eq!(tx.direction, Direction::Credit);
+        assert_eq!(tx.amount, 1000);
+        assert_eq!(tx.booking_date, d(2023, 1, 5));
+        assert_eq!(tx.value_date, Some(d(2023, 1, 6)));
+    }
+
+    #[test]
+    fn statement_from_camt_data_uses_inner_statement() {
+        let camt_stmt = sample_camt_statement();
+        let data = Camt053Data { statement: camt_stmt };
+
+        let stmt = Statement::try_from(data).expect("conversion must succeed");
+
+        assert_eq!(stmt.account_id, "DE1111222233334444");
+        assert_eq!(stmt.transactions.len(), 1);
+    }
+
+    #[test]
+    fn statement_from_camt_statement_uses_not_provided_when_no_iban() {
+        let mut camt_stmt = sample_camt_statement();
+        camt_stmt.account.id.iban = None;
+
+        let stmt = Statement::try_from(camt_stmt).expect("conversion must succeed");
+
+        assert_eq!(stmt.account_id, "not provided");
+    }
+}
+

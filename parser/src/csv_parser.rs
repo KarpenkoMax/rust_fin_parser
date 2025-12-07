@@ -153,6 +153,7 @@ impl CsvRecord {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct CsvFooter {
     opening_balance: Balance,
     closing_balance: Balance,
@@ -241,48 +242,6 @@ pub struct CsvData {
     header: CsvHeader,
     records: Vec<CsvRecord>,
     footer: CsvFooter,
-}
-
-fn parse_rus_date(raw: &str) -> Result<NaiveDate, ParseError> {
-    let s = raw.trim();
-    let s = s
-        .trim_end_matches(|c: char| c.is_whitespace() || c == '.' || c == 'г')
-        .trim();
-
-    let parts: Vec<&str> = s.split_whitespace().collect();
-
-    if parts.len() < 3 {
-        return Err(ParseError::Header(format!("invalid date from string {raw}")));
-    }
-
-    let day: u32 = parts[0]
-        .parse()
-        .map_err(|_| ParseError::Header(format!("invalid day part of date str {raw}")))?;
-
-    let year: i32 = parts[2]
-        .parse()
-        .map_err(|_| ParseError::Header(format!("invalid year part of date str {raw}")))?;
-
-    let month_str = parts[1].to_lowercase();
-
-    let month = match month_str.as_str() {
-        "января" => 1,
-        "февраля" => 2,
-        "марта" => 3,
-        "апреля" => 4,
-        "мая" => 5,
-        "июня" => 6,
-        "июля" => 7,
-        "августа" => 8,
-        "сентября" => 9,
-        "октября" => 10,
-        "ноября" => 11,
-        "декабря" => 12,
-        _ => return Err(ParseError::Header(format!("unknown month in date: {raw}"))),
-    };
-
-    NaiveDate::from_ymd_opt(year, month, day)
-        .ok_or_else(|| ParseError::Header(format!("invalid date: {raw}")))
 }
 
 impl TryFrom<CsvData> for Statement {
@@ -394,6 +353,305 @@ impl CsvData {
         let footer = CsvFooter::from_string_records(&footer_rows)?;
 
         Ok(CsvData { header, records, footer })
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use csv::StringRecord;
+    use chrono::NaiveDate;
+    use crate::model::Direction;
+
+    // CsvHeader
+
+    #[test]
+    fn csv_header_from_string_records_extracts_fields() {
+        // Ровно 8 строк, как ожидает CsvHeader::from_string_records
+
+        // row 0 - не используется
+        let row0 = {
+            let v = vec![String::new(); 16];
+            StringRecord::from(v)
+        };
+
+        // row 1 - system (col 5)
+        let row1 = {
+            let mut v = vec![String::new(); 16];
+            v[5] = "СберБизнес. экспорт выписки".to_string();
+            StringRecord::from(v)
+        };
+
+        // row 2 - bank (col 1)
+        let row2 = {
+            let mut v = vec![String::new(); 16];
+            v[1] = "ПАО СБЕРБАНК".to_string();
+            StringRecord::from(v)
+        };
+
+        // row 3 - creation_date (col 1)
+        let row3 = {
+            let mut v = vec![String::new(); 16];
+            v[1] = "Дата формирования выписки 01.02.2023 в 10:20:30".to_string();
+            StringRecord::from(v)
+        };
+
+        // row 4 - client_account (col 12)
+        let row4 = {
+            let mut v = vec![String::new(); 16];
+            v[12] = "40702810OURACC".to_string();
+            StringRecord::from(v)
+        };
+
+        // row 5 - client_name (col 12)
+        let row5 = {
+            let mut v = vec![String::new(); 16];
+            v[12] = "ООО Ромашка".to_string();
+            StringRecord::from(v)
+        };
+
+        // row 6 - period_from (col 2), period_until (col 15)
+        let row6 = {
+            let mut v = vec![String::new(); 16];
+            v[2]  = "за период с 01 января 2023 г.".to_string();
+            v[15] = "по 31 января 2023 г.".to_string();
+            StringRecord::from(v)
+        };
+
+        // row 7 - currency (col 2), last_transaction_date (col 12)
+        let row7 = {
+            let mut v = vec![String::new(); 16];
+            v[2]  = "RUB".to_string();
+            v[12] = "Дата предыдущей операции по счету 31 января 2023 г.".to_string();
+            StringRecord::from(v)
+        };
+
+        let rows = vec![row0, row1, row2, row3, row4, row5, row6, row7];
+
+        let header = CsvHeader::from_string_records(&rows).expect("header parse must succeed");
+
+        assert_eq!(
+            header.creation_date,
+            "Дата формирования выписки 01.02.2023 в 10:20:30"
+        );
+        assert_eq!(header.system, "СберБизнес. экспорт выписки");
+        assert_eq!(header.bank, "ПАО СБЕРБАНК");
+        assert_eq!(header.client_account, "40702810OURACC");
+        assert_eq!(header.client_name, "ООО Ромашка");
+        assert_eq!(header.period_from, "за период с 01 января 2023 г.");
+        assert_eq!(header.period_until, "по 31 января 2023 г.");
+        assert_eq!(header.currency, "RUB");
+        assert_eq!(
+            header.last_transaction_date,
+            "Дата предыдущей операции по счету 31 января 2023 г."
+        );
+    }
+
+    #[test]
+    fn csv_header_errors_on_not_enough_rows() {
+        let row0 = {
+            let v = vec![String::new(); 4];
+            StringRecord::from(v)
+        };
+        let row1 = {
+            let v = vec![String::new(); 4];
+            StringRecord::from(v)
+        };
+
+        let rows = vec![row0, row1];
+
+        let err = CsvHeader::from_string_records(&rows).unwrap_err();
+        match err {
+            ParseError::Header(msg) => {
+                assert!(
+                    msg.contains("not enough rows"),
+                    "unexpected msg: {msg}"
+                );
+            }
+            other => panic!("expected Header error, got {other:?}"),
+        }
+    }
+
+    // TableLayout & CsvRecord
+
+    #[test]
+    fn table_layout_finds_expected_columns() {
+        // Первая строка заголовков таблицы
+        let headers_row = {
+            let mut v = vec![String::new(); 7];
+            v[0] = "Дата проводки".to_string();
+            v[1] = "№ документа".to_string();
+            v[2] = "ВО".to_string();
+            v[3] = "Банк".to_string();
+            v[4] = "Сумма по дебету".to_string();
+            v[5] = "Сумма по кредиту".to_string();
+            v[6] = "Назначение платежа".to_string();
+            StringRecord::from(v)
+        };
+
+        // Вторая строка - подзаголовки
+        let subheaders_row = {
+            let mut v = vec![String::new(); 7];
+            v[1] = "Дебет".to_string();
+            v[2] = "Кредит".to_string();
+            StringRecord::from(v)
+        };
+
+        let layout =
+            TableLayout::from_string_records(&headers_row, &subheaders_row).expect("layout must succeed");
+
+        assert_eq!(layout.booking_date_col, 0);
+        assert_eq!(layout.doc_number_col, 1);
+        assert_eq!(layout.operation_type_col, 2);
+        assert_eq!(layout.bank_col, 3);
+        assert_eq!(layout.debit_amount_col, 4);
+        assert_eq!(layout.credit_amount_col, 5);
+        assert_eq!(layout.transaction_purpose_col, 6);
+        assert_eq!(layout.debit_account_col, 1);
+        assert_eq!(layout.credit_account_col, 2);
+    }
+
+    #[test]
+    fn csv_record_from_string_record_extracts_trimmed_fields() {
+        // layout из предыдущего теста
+        let headers_row = {
+            let mut v = vec![String::new(); 7];
+            v[0] = "Дата проводки".to_string();
+            v[1] = "№ документа".to_string();
+            v[2] = "ВО".to_string();
+            v[3] = "Банк".to_string();
+            v[4] = "Сумма по дебету".to_string();
+            v[5] = "Сумма по кредиту".to_string();
+            v[6] = "Назначение платежа".to_string();
+            StringRecord::from(v)
+        };
+        let subheaders_row = {
+            let mut v = vec![String::new(); 7];
+            v[1] = "Дебет".to_string();
+            v[2] = "Кредит".to_string();
+            StringRecord::from(v)
+        };
+        let layout =
+            TableLayout::from_string_records(&headers_row, &subheaders_row).expect("layout must succeed");
+
+        let row = {
+            let mut v = vec![String::new(); 7];
+            v[0] = " 10.01.2023 ".to_string();
+            v[1] = " 40702810OUR ".to_string();  // debit_account
+            v[2] = " 40702810CP ".to_string();  // credit_account
+            v[3] = " БАНК ".to_string();
+            v[4] = " 123.45 ".to_string();  // debit_amount
+            v[5] = "  ".to_string();  // empty credit_amount
+            v[6] = "  Назначение  ".to_string();
+            StringRecord::from(v)
+        };
+
+        let rec = CsvRecord::from_string_record(&row, &layout);
+
+        assert_eq!(rec.booking_date, "10.01.2023");
+        assert_eq!(rec.debit_account, "40702810OUR");
+        assert_eq!(rec.credit_account, "40702810CP");
+        assert_eq!(rec.debit_amount.as_deref(), Some("123.45"));
+        assert_eq!(rec.credit_amount.as_deref(), Some(""));
+        assert_eq!(rec.bank, "БАНК");
+        assert_eq!(rec.transaction_purpose.as_deref(), Some("Назначение"));
+    }
+
+    #[test]
+    fn csv_record_into_transaction_parses_amount_and_counterparty() {
+        // layout
+        let headers_row = {
+            let mut v = vec![String::new(); 7];
+            v[0] = "Дата проводки".to_string();
+            v[1] = "№ документа".to_string();
+            v[2] = "ВО".to_string();
+            v[3] = "Банк".to_string();
+            v[4] = "Сумма по дебету".to_string();
+            v[5] = "Сумма по кредиту".to_string();
+            v[6] = "Назначение платежа".to_string();
+            StringRecord::from(v)
+        };
+        let subheaders_row = {
+            let mut v = vec![String::new(); 7];
+            v[1] = "Дебет".to_string();
+            v[2] = "Кредит".to_string();
+            StringRecord::from(v)
+        };
+        let layout =
+            TableLayout::from_string_records(&headers_row, &subheaders_row).expect("layout must succeed");
+
+        // одна строка таблицы
+        let row = {
+            let mut v = vec![String::new(); 7];
+            v[0] = "10.01.2023".to_string();
+            v[1] = "OUR_ACC".to_string();  // debit_account
+            v[2] = "CP_ACC".to_string();  // credit_account
+            v[3] = "БАНК".to_string();
+            v[4] = "100.00".to_string();  // debit_amount
+            v[5] = "".to_string();  // credit_amount
+            v[6] = "Платёж контрагенту".to_string();
+            StringRecord::from(v)
+        };
+
+        let rec = CsvRecord::from_string_record(&row, &layout);
+        let tx = rec
+            .into_transaction("OUR_ACC")
+            .expect("into_transaction must succeed");
+
+        assert_eq!(
+            tx.booking_date,
+            NaiveDate::parse_from_str("10.01.2023", "%d.%m.%Y").unwrap()
+        );
+        assert_eq!(tx.direction, Direction::Debit);
+        assert_eq!(tx.amount, 10_000);
+        assert_eq!(tx.counterparty.as_deref(), Some("CP_ACC"));
+        assert_eq!(tx.description, "Платёж контрагенту");
+    }
+
+    // CsvFooter
+
+    #[test]
+    fn csv_footer_parses_opening_and_closing_balances() {
+        let opening_row = {
+            let mut v = vec![String::new(); 21];
+            v[1]  = "Входящий остаток".to_string();
+            v[11] = "100.00".to_string();
+            StringRecord::from(v)
+        };
+
+        let closing_row = {
+            let mut v = vec![String::new(); 21];
+            v[1]  = "Исходящий остаток".to_string();
+            v[11] = "150.00".to_string();
+            StringRecord::from(v)
+        };
+
+        let footer =
+            CsvFooter::from_string_records(&[opening_row, closing_row]).expect("footer parse must succeed");
+
+        assert_eq!(footer.opening_balance, 10_000);
+        assert_eq!(footer.closing_balance, 15_000);
+    }
+
+    #[test]
+    fn csv_footer_errors_if_balances_missing() {
+        let row = {
+            let mut v = vec![String::new(); 5];
+            v[1] = "Что-то ещё".to_string();
+            StringRecord::from(v)
+        };
+
+        let err = CsvFooter::from_string_records(&[row]).unwrap_err();
+        match err {
+            ParseError::Header(msg) => {
+                assert!(
+                    msg.contains("opening balance") || msg.contains("closing balance"),
+                    "unexpected msg: {msg}"
+                );
+            }
+            other => panic!("expected Header error, got {other:?}"),
+        }
     }
 }
 

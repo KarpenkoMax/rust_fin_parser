@@ -3,15 +3,15 @@ use clap::{Parser, ValueEnum};
 use parser::{Camt053Data, CsvData, Mt940Data, ParseError, Statement};
 use std::fs::File;
 use std::process;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::fmt::Display;
 
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "cli_converter",
+    name = "cli_comparer",
     version,
-    about = "Конвертирует выписки между различными стандартизированными форматами.",
+    about = "Сравнивает две выписки стандартизированных форматов.",
     long_about = None,
 )]
 struct Args {

@@ -12,7 +12,7 @@ static IBAN_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Разделяет строку с тегом на сам тег и строку после него
-pub(crate) fn split_tag_line(line: &str) -> Result<(&str, &str), ParseError> {
+pub(super) fn split_tag_line(line: &str) -> Result<(&str, &str), ParseError> {
     let line = line.trim_start();
     if !line.starts_with(':') {
         return Err(ParseError::Mt940Tag("tag line must start with ':'".into()));
@@ -29,7 +29,7 @@ pub(crate) fn split_tag_line(line: &str) -> Result<(&str, &str), ParseError> {
     Ok((tag, value))
 }
 
-pub(crate) fn parse_mt940_yy_mm_dd(s: &str) -> Result<NaiveDate, ParseError> {
+pub(super) fn parse_mt940_yy_mm_dd(s: &str) -> Result<NaiveDate, ParseError> {
     if s.len() != 6 {
         return Err(ParseError::BadInput(format!(
             "invalid YYMMDD date: '{s}'"
@@ -54,7 +54,7 @@ pub(crate) fn parse_mt940_yy_mm_dd(s: &str) -> Result<NaiveDate, ParseError> {
     })
 }
 
-pub(crate) fn derive_booking_date(
+pub(super) fn derive_booking_date(
     value_date: NaiveDate,
     entry_date: Option<&str>,
 ) -> Result<NaiveDate, ParseError> {
@@ -99,15 +99,18 @@ pub(crate) fn derive_booking_date(
 }
 
 /// Ищет IBAN + имя в наборе строк
-pub(crate) fn find_iban_and_name_in_lines(lines: &[String]) -> Option<(String, Option<String>)> {
-    // Сначала пытаемся найти строку, где в одной строке есть и IBAN, и часть имени
+pub(super) fn find_iban_and_name_in_lines(lines: &[String]) -> Option<(String, Option<String>)> {
+    // Сначала пытаемся найти строку, где в одной строке есть и IBAN, и часть имени.
+    // Нас интересуют только случаи, где name.is_some().
     for line in lines {
         if let Some((iban, name)) = find_iban_and_name_in_line(line) {
-            return Some((iban, name));
+            if name.is_some() {
+                return Some((iban, name));
+            }
         }
     }
 
-    // ищем строку с IBAN
+    // ищем строку с IBAN и пытаемся взять имя из следующей непустой строки.
     let mut iban_idx: Option<usize> = None;
     let mut iban_value: Option<String> = None;
 
@@ -142,7 +145,7 @@ pub(crate) fn find_iban_and_name_in_lines(lines: &[String]) -> Option<(String, O
 
 /// В одной строке ищем токен, похожий на IBAN.
 /// все, что после считается именем контрагента.
-pub(crate) fn find_iban_and_name_in_line(line: &str) -> Option<(String, Option<String>)> {
+pub(super) fn find_iban_and_name_in_line(line: &str) -> Option<(String, Option<String>)> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
 
     for (idx, &token) in tokens.iter().enumerate() {
@@ -167,13 +170,13 @@ pub(crate) fn find_iban_and_name_in_line(line: &str) -> Option<(String, Option<S
 }
 
 /// Ищет любой IBAN-подобный токен в строке
-pub(crate) fn find_iban_in_line(line: &str) -> Option<String> {
+pub(super) fn find_iban_in_line(line: &str) -> Option<String> {
     line.split_whitespace()
         .filter_map(|token| normalize_and_check_iban(token))
         .next()
 }
 
-pub(crate) fn normalize_and_check_iban(token: &str) -> Option<String> {
+pub(super) fn normalize_and_check_iban(token: &str) -> Option<String> {
     let cleaned = token
         .trim_matches(|c: char| !c.is_ascii_alphanumeric())
         .to_uppercase();
@@ -188,3 +191,233 @@ pub(crate) fn normalize_and_check_iban(token: &str) -> Option<String> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+    use crate::ParseError;
+
+    // split_tag_line
+
+    #[test]
+    fn split_tag_line_parses_valid_line() {
+        let (tag, value) = split_tag_line(":20:ABC").unwrap();
+        assert_eq!(tag, "20");
+        assert_eq!(value, "ABC");
+    }
+
+    #[test]
+    fn split_tag_line_trims_leading_spaces_and_tag() {
+        let (tag, value) = split_tag_line("   :25: 123456789 ").unwrap();
+        assert_eq!(tag, "25");
+        // value не триммится внутри функции
+        assert_eq!(value, " 123456789 ");
+    }
+
+    #[test]
+    fn split_tag_line_fails_if_no_leading_colon() {
+        let err = split_tag_line("20:ABC").unwrap_err();
+        assert!(matches!(err, ParseError::Mt940Tag(_)));
+    }
+
+    #[test]
+    fn split_tag_line_fails_if_no_second_colon() {
+        let err = split_tag_line(":20ABC").unwrap_err();
+        assert!(matches!(err, ParseError::Mt940Tag(_)));
+    }
+
+    // parse_mt940_yy_mm_dd
+
+    #[test]
+    fn parse_mt940_yy_mm_dd_parses_valid_strings() {
+        assert_eq!(
+            parse_mt940_yy_mm_dd("251101").unwrap(),
+            NaiveDate::from_ymd_opt(2025, 11, 1).unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_mt940_yy_mm_dd_fails_when_expected() {
+        assert!(matches!(
+            parse_mt940_yy_mm_dd("251301"),
+            Err(ParseError::BadInput(_))
+        ));
+        assert!(matches!(
+            parse_mt940_yy_mm_dd("251150"),
+            Err(ParseError::BadInput(_))
+        ));
+        assert!(matches!(
+            parse_mt940_yy_mm_dd("abdbef"),
+            Err(ParseError::BadInput(_))
+        ));
+        assert!(matches!(
+            parse_mt940_yy_mm_dd("абвгдеёжзи"),
+            Err(ParseError::BadInput(_))
+        ));
+        assert!(matches!(
+            parse_mt940_yy_mm_dd("1101"),
+            Err(ParseError::BadInput(_))
+        ));
+    }
+
+    // derive_booking_date
+
+    #[test]
+    fn derive_booking_date_defaults_to_value_date_when_none() {
+        let vd = NaiveDate::from_ymd_opt(2025, 11, 1).unwrap();
+        let bd = derive_booking_date(vd, None).unwrap();
+        assert_eq!(bd, vd);
+    }
+
+    #[test]
+    fn derive_booking_date_uses_mmdd_when_4_digits() {
+        let vd = NaiveDate::from_ymd_opt(2025, 11, 1).unwrap();
+        let bd = derive_booking_date(vd, Some("0205")).unwrap();
+        // MMDD -> 02-05 того же года, что и value_date
+        assert_eq!(bd, NaiveDate::from_ymd_opt(2025, 2, 5).unwrap());
+    }
+
+    #[test]
+    fn derive_booking_date_uses_dd_when_2_digits() {
+        let vd = NaiveDate::from_ymd_opt(2025, 11, 1).unwrap();
+        let bd = derive_booking_date(vd, Some("15")).unwrap();
+        assert_eq!(bd, NaiveDate::from_ymd_opt(2025, 11, 15).unwrap());
+    }
+
+    #[test]
+    fn derive_booking_date_fails_on_invalid_length() {
+        assert!(matches!(
+            derive_booking_date(
+                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
+                Some("2")
+            ),
+            Err(ParseError::BadInput(_))
+        ));
+        assert!(matches!(
+            derive_booking_date(
+                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
+                Some("010203")
+            ),
+            Err(ParseError::BadInput(_))
+        ));
+    }
+
+    #[test]
+    fn derive_booking_date_fails_on_invalid_digits() {
+        assert!(matches!(
+            derive_booking_date(
+                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
+                Some("zz")
+            ),
+            Err(ParseError::BadInput(_))
+        ));
+        assert!(matches!(
+            derive_booking_date(
+                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
+                Some("99aa")
+            ),
+            Err(ParseError::BadInput(_))
+        ));
+    }
+
+    // normalize_and_check_iban / find_iban_in_line
+
+    // используем один валидный IBAN без дефисов, только A-Z0-9
+    const VALID_IBAN: &str = "DE02123412341234123412";
+
+    #[test]
+    fn normalize_and_check_iban_accepts_simple_iban() {
+        let iban = normalize_and_check_iban(VALID_IBAN);
+        assert_eq!(iban, Some(VALID_IBAN.to_string()));
+    }
+
+    #[test]
+    fn normalize_and_check_iban_strips_non_alnum_at_edges() {
+        let iban = normalize_and_check_iban(&format!("  {VALID_IBAN},"));
+        assert_eq!(iban, Some(VALID_IBAN.to_string()));
+    }
+
+    #[test]
+    fn normalize_and_check_iban_rejects_too_short() {
+        let iban = normalize_and_check_iban("DE12999");
+        assert!(iban.is_none());
+    }
+
+    #[test]
+    fn find_iban_in_line_finds_first_iban_like_token() {
+        let line = format!("foo {VALID_IBAN} bar");
+        let iban = find_iban_in_line(&line);
+        assert_eq!(iban, Some(VALID_IBAN.to_string()));
+    }
+
+    #[test]
+    fn find_iban_in_line_returns_none_if_no_iban() {
+        let line = "foo bar baz";
+        let iban = find_iban_in_line(line);
+        assert!(iban.is_none());
+    }
+
+    // find_iban_and_name_in_line
+
+    #[test]
+    fn find_iban_and_name_in_line_with_inline_name() {
+        let line = format!("{VALID_IBAN} JOHN DOE");
+        let (iban, name) = find_iban_and_name_in_line(&line).unwrap();
+        assert_eq!(iban, VALID_IBAN);
+        assert_eq!(name, Some("JOHN DOE".to_string()));
+    }
+
+    #[test]
+    fn find_iban_and_name_in_line_without_name() {
+        let line = VALID_IBAN;
+        let (iban, name) = find_iban_and_name_in_line(line).unwrap();
+        assert_eq!(iban, VALID_IBAN);
+        assert_eq!(name, None);
+    }
+
+    #[test]
+    fn find_iban_and_name_in_line_returns_none_if_no_iban() {
+        let line = "JOHN DOE ONLY";
+        assert!(find_iban_and_name_in_line(line).is_none());
+    }
+
+    // find_iban_and_name_in_lines
+
+    #[test]
+    fn find_iban_and_name_in_lines_prefers_inline_case() {
+        let lines = vec![
+            "SOME HEADER".to_string(),
+            format!("{VALID_IBAN} JOHN DOE"),
+            "SHOULD BE IGNORED".to_string(),
+        ];
+        let (iban, name) = find_iban_and_name_in_lines(&lines).unwrap();
+        assert_eq!(iban, VALID_IBAN);
+        assert_eq!(name, Some("JOHN DOE".to_string()));
+    }
+
+        #[test]
+        fn find_iban_and_name_in_lines_uses_next_line_as_name_if_needed() {
+            let lines = vec![
+                "SOME HEADER".to_string(),
+                format!("IBAN: {VALID_IBAN}"),
+                "".to_string(),
+                "John Doe Full Name".to_string(),
+            ];
+
+            let (iban, name) = find_iban_and_name_in_lines(&lines).unwrap();
+            assert_eq!(iban, VALID_IBAN);
+            assert_eq!(name, Some("John Doe Full Name".to_string()));
+        }
+
+    #[test]
+    fn find_iban_and_name_in_lines_returns_none_if_no_iban() {
+        let lines = vec![
+            "NO IBAN HERE".to_string(),
+            "STILL NO IBAN".to_string(),
+        ];
+        assert!(find_iban_and_name_in_lines(&lines).is_none());
+    }
+}
+
+
