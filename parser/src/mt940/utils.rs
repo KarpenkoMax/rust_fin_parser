@@ -46,8 +46,8 @@ pub(super) fn parse_mt940_yy_mm_dd(s: &str) -> Result<NaiveDate, ParseError> {
         .parse()
         .map_err(|_| ParseError::BadInput(format!("invalid day in YYMMDD: '{s}'")))?;
 
-    // простое допущение: все даты в 2000-х
-    let year = 2000 + yy;
+    // простое допущение: 00-79 -> 2000-2079, 80-99 -> 1900-1999
+    let year = if yy >= 80 { 1900 + yy } else { 2000 + yy };
 
     NaiveDate::from_ymd_opt(year, mm, dd).ok_or_else(|| {
         ParseError::BadInput(format!("invalid YYMMDD date components: '{s}'"))

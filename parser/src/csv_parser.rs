@@ -16,7 +16,7 @@ impl From<csv::Error> for ParseError {
 
 /// Структура с данными из заголовка CSV-выписки
 #[derive(Debug, Default)]
-pub struct CsvHeader {
+pub(crate) struct CsvHeader {
     creation_date: String,
     system: String,
     bank: String,
@@ -72,7 +72,7 @@ impl CsvHeader {
 
 /// Операция из CSV-выписки
 #[derive(Debug, Default)]
-pub struct CsvRecord {
+pub(crate) struct CsvRecord {
     // дата проводки
     booking_date: String,
     debit_account: String,

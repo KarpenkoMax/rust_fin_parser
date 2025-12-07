@@ -26,7 +26,7 @@ impl From<SeError> for ParseError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Camt053Data {
-    pub statement: Camt053Statement,
+    pub(crate) statement: Camt053Statement,
 }
 
 impl Camt053Data {
