@@ -1,5 +1,9 @@
-use parser::{CsvData, Statement, Direction};
-use std::{fs::File, io::{BufReader, Cursor}, path::PathBuf};
+use parser::{CsvData, Direction, Statement};
+use std::{
+    fs::File,
+    io::{BufReader, Cursor},
+    path::PathBuf,
+};
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -11,8 +15,8 @@ fn fixture_path() -> PathBuf {
 
 fn parse_csv_to_statement() -> Statement {
     let path = fixture_path();
-    let file = File::open(&path)
-        .unwrap_or_else(|e| panic!("failed to open CSV fixture {path:?}: {e}"));
+    let file =
+        File::open(&path).unwrap_or_else(|e| panic!("failed to open CSV fixture {path:?}: {e}"));
     let reader = BufReader::new(file);
 
     let csv_data = CsvData::parse(reader).expect("failed to parse CSV fixture");
@@ -134,8 +138,7 @@ fn csv_roundtrip_via_statement_preserves_core_data() {
         let norm_rt_cp_name = normalize_name(&rt_tx.counterparty_name);
 
         assert_eq!(
-            norm_orig_cp_name,
-            norm_rt_cp_name,
+            norm_orig_cp_name, norm_rt_cp_name,
             "counterparty_name mismatch at transaction #{i}"
         );
     }

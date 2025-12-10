@@ -1,10 +1,9 @@
-use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use parser::{Camt053Data, CsvData, Mt940Data, ParseError, Statement};
 use std::fs::File;
-use std::process;
 use std::io::{self, Write};
-
+use std::path::PathBuf;
+use std::process;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -62,17 +61,16 @@ fn write_output<W: Write>(
 
 fn run() -> Result<(), ParseError> {
     let args = Args::parse();
- 
+
     if !args.input.exists() {
         eprintln!("input file does not exist: {}", args.input.display());
         process::exit(1)
     }
-    
+
     let file = File::open(&args.input).unwrap_or_else(|err| {
         eprintln!("failed to open input file {}: {err}", args.input.display());
         process::exit(1);
     });
-    
 
     let reader = io::BufReader::new(file);
 
@@ -81,18 +79,18 @@ fn run() -> Result<(), ParseError> {
         Format::Csv => {
             let data = CsvData::parse(reader)?;
             Statement::try_from(data)?
-        },
+        }
         Format::Camt053 => {
             let data = Camt053Data::parse(reader)?;
             Statement::try_from(data)?
-        },
+        }
         Format::Mt940 => {
             let data = Mt940Data::parse(reader)?;
             Statement::try_from(data)?
         }
     };
 
-     match args.to_file {
+    match args.to_file {
         // в файл
         Some(path) => {
             let output_file = File::create(&path).unwrap_or_else(|err| {

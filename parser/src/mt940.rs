@@ -1,11 +1,10 @@
 mod utils;
+use crate::error::ParseError;
+use crate::model::{Balance, Currency, Direction, Statement, Transaction};
+use crate::utils::{parse_amount, parse_currency};
 use chrono::NaiveDate;
 use std::io::{BufReader, Read};
-use crate::error::ParseError;
-use crate::model::{Direction, Statement, Transaction, Currency, Balance};
-use crate::utils::{parse_amount, parse_currency};
 use utils::*;
-
 
 #[derive(Debug, Clone)]
 pub struct Mt940Message {
@@ -71,13 +70,13 @@ fn parse_balance(value: &str) -> Result<Mt940Balance, ParseError> {
 
 impl Mt940Message {
     pub(crate) fn from_string_lines(lines: &[String]) -> Result<Self, ParseError> {
-        let mut tx_ref: Option<String> = None;  // :20:
-        let mut account_id: Option<String> = None;  // :25:
-        let mut statement_number: Option<String> = None;  // :28C:
+        let mut tx_ref: Option<String> = None; // :20:
+        let mut account_id: Option<String> = None; // :25:
+        let mut statement_number: Option<String> = None; // :28C:
 
-        let mut opening_balance: Option<Mt940Balance> = None;  // :60F: / :60M:
-        let mut closing_balance: Option<Mt940Balance> = None;  // :62F:
-        let mut closing_available_balance: Option<Mt940Balance> = None;  // :64:
+        let mut opening_balance: Option<Mt940Balance> = None; // :60F: / :60M:
+        let mut closing_balance: Option<Mt940Balance> = None; // :62F:
+        let mut closing_available_balance: Option<Mt940Balance> = None; // :64:
 
         let mut entries: Vec<Mt940Entry> = Vec::new();
         let mut current_entry: Option<Mt940Entry> = None;
@@ -121,10 +120,8 @@ impl Mt940Message {
                         if let Some(entry) = current_entry.take() {
                             entries.push(entry);
                         }
-                        current_entry = Some(Mt940Entry::from_61_line(
-                            value,
-                            line_trimmed.to_string(),
-                        )?);
+                        current_entry =
+                            Some(Mt940Entry::from_61_line(value, line_trimmed.to_string())?);
                     }
                     "86" => {
                         if let Some(entry) = current_entry.as_mut() {
@@ -151,8 +148,9 @@ impl Mt940Message {
         // проверяем обязательные поля
         let account_id = account_id
             .ok_or_else(|| ParseError::BadInput("MT940: missing :25: account id".into()))?;
-        let opening_balance = opening_balance
-            .ok_or_else(|| ParseError::BadInput("MT940: missing opening balance :60F:/:60M:".into()))?;
+        let opening_balance = opening_balance.ok_or_else(|| {
+            ParseError::BadInput("MT940: missing opening balance :60F:/:60M:".into())
+        })?;
 
         Ok(Mt940Message {
             transaction_reference: tx_ref,
@@ -244,7 +242,6 @@ impl TryFrom<Mt940Message> for Statement {
         ))
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Mt940Balance {
@@ -344,15 +341,17 @@ pub fn extract_counterparty_from_mt940(entry: &Mt940Entry) -> (Option<String>, O
 
     // Пробуем customer_reference
     if let Some(ref cref) = entry.customer_reference
-        && let Some((iban, name)) = find_iban_and_name_in_line(cref) {
-            return (Some(iban), name);
-        }
+        && let Some((iban, name)) = find_iban_and_name_in_line(cref)
+    {
+        return (Some(iban), name);
+    }
 
     // Пробуем bank_reference
     if let Some(ref bref) = entry.bank_reference
-        && let Some((iban, name)) = find_iban_and_name_in_line(bref) {
-            return (Some(iban), name);
-        }
+        && let Some((iban, name)) = find_iban_and_name_in_line(bref)
+    {
+        return (Some(iban), name);
+    }
 
     (None, None)
 }
@@ -379,7 +378,7 @@ impl TryFrom<&Mt940Entry> for Transaction {
         let description = build_description(entry);
         let (counterparty, counterparty_name) = extract_counterparty_from_mt940(entry);
 
-        Ok(Transaction { 
+        Ok(Transaction {
             booking_date,
             value_date: Some(value_date),
             amount,
@@ -387,102 +386,97 @@ impl TryFrom<&Mt940Entry> for Transaction {
             description,
             counterparty,
             counterparty_name,
-         })
+        })
     }
 }
 
 impl Mt940Entry {
-        pub fn push_info_line(&mut self, line: &str) {
-            self.info.lines.push(line.trim().to_string());
+    pub fn push_info_line(&mut self, line: &str) {
+        self.info.lines.push(line.trim().to_string());
+    }
+
+    pub fn from_61_line(value: &str, raw_61: String) -> Result<Self, ParseError> {
+        let value = value.trim();
+        let bytes = value.as_bytes();
+        let len = bytes.len();
+
+        if len < 8 {
+            return Err(ParseError::BadInput(format!(
+                "statement line too short: '{value}'"
+            )));
         }
 
-        pub fn from_61_line(value: &str, raw_61: String) -> Result<Self, ParseError> {
-            let value = value.trim();
-            let bytes = value.as_bytes();
-            let len = bytes.len();
+        // value date (YYMMDD)
+        let value_date = &value[0..6];
+        let mut idx = 6;
 
-            if len < 8 {
-                return Err(ParseError::BadInput(format!(
-                    "statement line too short: '{value}'"
-                )));
-            }
+        // entry date (4 digits)
+        let mut entry_date = None;
+        if len >= idx + 4 && value[idx..idx + 4].chars().all(|c| c.is_ascii_digit()) {
+            entry_date = Some(value[idx..idx + 4].to_string());
+            idx += 4;
+        }
 
-            // value date (YYMMDD)
-            let value_date = &value[0..6];
-            let mut idx = 6;
+        let (dc_mark, funds_code, amount, rest_after_amount) =
+            parse_dc_and_amount(&value[idx..], value)?;
 
-            // entry date (4 digits)
-            let mut entry_date = None;
-            if len >= idx + 4
-                && value[idx..idx + 4]
-                    .chars()
-                    .all(|c| c.is_ascii_digit())
-            {
-                entry_date = Some(value[idx..idx + 4].to_string());
-                idx += 4;
-            }
+        let mut rest = rest_after_amount;
 
-            let (
-                dc_mark, funds_code, amount, rest_after_amount
-            ) = parse_dc_and_amount(&value[idx..], value)?;
+        let mut transaction_type = None;
+        let mut customer_reference = None;
+        let mut bank_reference = None;
+        let mut extra_details = None;
 
-            let mut rest = rest_after_amount;
+        // transaction_type: 4 буквы подряд
+        if rest.len() >= 4 && rest[..4].chars().all(|c| c.is_ascii_alphabetic()) {
+            transaction_type = Some(rest[..4].to_string());
+            rest = rest[4..].trim_start();
+        }
 
-            let mut transaction_type = None;
-            let mut customer_reference = None;
-            let mut bank_reference = None;
-            let mut extra_details = None;
+        if let Some(pos) = rest.find("//") {
+            // есть customer_ref и bank_ref
+            let (cust, after_cust) = rest.split_at(pos);
+            customer_reference = Some(cust.trim().to_string());
 
-            // transaction_type: 4 буквы подряд
-            if rest.len() >= 4 && rest[..4].chars().all(|c| c.is_ascii_alphabetic()) {
-                transaction_type = Some(rest[..4].to_string());
-                rest = rest[4..].trim_start();
-            }
-
-            if let Some(pos) = rest.find("//") {
-                // есть customer_ref и bank_ref
-                let (cust, after_cust) = rest.split_at(pos);
-                customer_reference = Some(cust.trim().to_string());
-
-                let after = &after_cust[2..]; // без //
-                if let Some(space_pos) = after.find(' ') {
-                    let (bank, extra) = after.split_at(space_pos);
-                    bank_reference = Some(bank.trim().to_string());
-                    let extra = extra.trim();
-                    if !extra.is_empty() {
-                        extra_details = Some(extra.to_string());
-                    }
-                } else {
-                    let bank = after.trim();
-                    if !bank.is_empty() {
-                        bank_reference = Some(bank.to_string());
-                    }
+            let after = &after_cust[2..]; // без //
+            if let Some(space_pos) = after.find(' ') {
+                let (bank, extra) = after.split_at(space_pos);
+                bank_reference = Some(bank.trim().to_string());
+                let extra = extra.trim();
+                if !extra.is_empty() {
+                    extra_details = Some(extra.to_string());
                 }
-            } else if !rest.is_empty() {
-                // только customer_reference без // (напр. "NOVBNL47INGB9999999999")
-                customer_reference = Some(rest.trim().to_string());
+            } else {
+                let bank = after.trim();
+                if !bank.is_empty() {
+                    bank_reference = Some(bank.to_string());
+                }
             }
+        } else if !rest.is_empty() {
+            // только customer_reference без // (напр. "NOVBNL47INGB9999999999")
+            customer_reference = Some(rest.trim().to_string());
+        }
 
-            Ok(Mt940Entry {
-                raw_61,
-                value_date: value_date.to_string(),
-                entry_date,
-                dc_mark,
-                funds_code,
-                amount,
-                transaction_type,
-                customer_reference,
-                bank_reference,
-                extra_details,
-                info: Mt940EntryInfo { lines: Vec::new() },
-            })
+        Ok(Mt940Entry {
+            raw_61,
+            value_date: value_date.to_string(),
+            entry_date,
+            dc_mark,
+            funds_code,
+            amount,
+            transaction_type,
+            customer_reference,
+            bank_reference,
+            extra_details,
+            info: Mt940EntryInfo { lines: Vec::new() },
+        })
     }
 }
 
 /// Структура с сырыми данными формата mt940.
-/// 
+///
 /// Для парсинга используйте [`Mt940Data::parse`].
-/// 
+///
 /// Пример:
 /// ```rust,no_run
 /// use std::io::Cursor;
@@ -502,7 +496,7 @@ pub struct Mt940Data {
 
 impl Mt940Data {
     /// Парсит при помощи переданного reader данные  в [`Mt940Data`]
-    /// 
+    ///
     /// При ошибке возвращает [`ParseError`]
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
         use std::io::BufRead;
@@ -630,7 +624,6 @@ impl Mt940Data {
     }
 }
 
-
 impl TryFrom<Mt940Data> for Statement {
     type Error = ParseError;
 
@@ -638,7 +631,6 @@ impl TryFrom<Mt940Data> for Statement {
         Statement::try_from(data.message)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -759,10 +751,7 @@ mod tests {
 
         let desc = build_description(&entry);
 
-        assert_eq!(
-            desc,
-            "NTRF | REF123 | //BANKREF | EXTRA | Line1 Line2"
-        );
+        assert_eq!(desc, "NTRF | REF123 | //BANKREF | EXTRA | Line1 Line2");
 
         // если всё убрать, должен вернуться raw_61
         entry.transaction_type = None;
@@ -881,7 +870,10 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(2023, 1, 1).unwrap())
         );
 
-        assert_eq!(tx.booking_date, NaiveDate::from_ymd_opt(2023, 1, 2).unwrap());
+        assert_eq!(
+            tx.booking_date,
+            NaiveDate::from_ymd_opt(2023, 1, 2).unwrap()
+        );
 
         assert!(!tx.description.is_empty());
     }
@@ -964,26 +956,17 @@ mod tests {
 
     #[test]
     fn mt940_message_from_string_lines_requires_account_and_opening_balance() {
-        let lines_missing_25 = vec![
-            ":20:REF".to_string(),
-            ":60F:C230101EUR100,00".to_string(),
-        ];
+        let lines_missing_25 = vec![":20:REF".to_string(), ":60F:C230101EUR100,00".to_string()];
 
         let err = Mt940Message::from_string_lines(&lines_missing_25).unwrap_err();
         match err {
             ParseError::BadInput(msg) => {
-                assert!(
-                    msg.contains("missing :25"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("missing :25"), "unexpected msg: {msg}");
             }
             other => panic!("expected BadInput, got {other:?}"),
         }
 
-        let lines_missing_60 = vec![
-            ":20:REF".to_string(),
-            ":25:ACC".to_string(),
-        ];
+        let lines_missing_60 = vec![":20:REF".to_string(), ":25:ACC".to_string()];
 
         let err = Mt940Message::from_string_lines(&lines_missing_60).unwrap_err();
         match err {
@@ -1025,17 +1008,20 @@ mod tests {
         assert_eq!(stmt.transactions.len(), 1);
 
         // period_from по дате opening_balance
-        assert_eq!(stmt.period_from, NaiveDate::from_ymd_opt(2023, 1, 1).unwrap());
+        assert_eq!(
+            stmt.period_from,
+            NaiveDate::from_ymd_opt(2023, 1, 1).unwrap()
+        );
         // period_until по дате закрывающего баланса
-        assert_eq!(stmt.period_until, NaiveDate::from_ymd_opt(2023, 1, 3).unwrap());
+        assert_eq!(
+            stmt.period_until,
+            NaiveDate::from_ymd_opt(2023, 1, 3).unwrap()
+        );
     }
 
     #[test]
     fn mt940_message_to_statement_errors_on_unknown_dc_mark_in_balances() {
-        let lines = vec![
-            ":25:ACC".to_string(),
-            ":60F:X230101EUR100,00".to_string(),
-        ];
+        let lines = vec![":25:ACC".to_string(), ":60F:X230101EUR100,00".to_string()];
 
         let msg = Mt940Message::from_string_lines(&lines).unwrap();
         let err = Statement::try_from(msg).unwrap_err();
@@ -1096,10 +1082,7 @@ mod tests {
         let err = Mt940Data::parse("".as_bytes()).unwrap_err();
         match err {
             ParseError::BadInput(msg) => {
-                assert!(
-                    msg.contains("0 mt940 messages"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("0 mt940 messages"), "unexpected msg: {msg}");
             }
             other => panic!("expected BadInput, got {other:?}"),
         }

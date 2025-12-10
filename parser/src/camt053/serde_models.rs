@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Camt053Entry {
@@ -147,18 +147,17 @@ pub(crate) struct CamtMoney {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CamtCurrencyExchange {
     #[serde(rename = "SrcCcy")]
-    pub(crate) src_ccy: Option<String>,   // EUR
+    pub(crate) src_ccy: Option<String>, // EUR
 
     #[serde(rename = "TrgtCcy")]
-    pub(crate) trgt_ccy: Option<String>,  // DKK
+    pub(crate) trgt_ccy: Option<String>, // DKK
 
     #[serde(rename = "UnitCcy")]
-    pub(crate) unit_ccy: Option<String>,  // EUR
+    pub(crate) unit_ccy: Option<String>, // EUR
 
     #[serde(rename = "XchgRate")]
-    pub(crate) rate: Option<String>,      // "7.4738000"
+    pub(crate) rate: Option<String>, // "7.4738000"
 }
-
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CamtRelatedParties {
@@ -186,7 +185,6 @@ pub(crate) struct CamtRelatedParties {
     #[serde(rename = "UltmtCdtr", skip_serializing_if = "Option::is_none")]
     pub(crate) ultimate_creditor: Option<CamtParty>,
 }
-
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CamtParty {
@@ -247,8 +245,7 @@ pub(crate) struct CamtRemittanceInfo {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub(crate) struct CamtStructuredRemittance {
-}
+pub(crate) struct CamtStructuredRemittance {}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CamtRelatedDates {
@@ -346,5 +343,3 @@ pub(crate) struct Camt053BalanceCodeOrProprietary {
     #[serde(rename = "Cd")]
     pub(crate) code: Option<String>,
 }
-
-

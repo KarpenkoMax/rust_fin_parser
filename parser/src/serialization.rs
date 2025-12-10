@@ -1,24 +1,20 @@
-mod csv_helpers;
 mod camt053_helpers;
 mod common;
-use std::io::Write;
+mod csv_helpers;
+use crate::error::ParseError;
+use crate::model::{Direction, Statement};
 use chrono::Utc;
 use csv::WriterBuilder;
-use crate::error::ParseError;
-use crate::model::{Statement, Direction};
+use std::io::Write;
 mod mt940_helpers;
 
-use quick_xml::se::to_utf8_io_writer;
 use crate::camt053::serde_models::*;
+use quick_xml::se::to_utf8_io_writer;
 
 impl Statement {
     /// Записывает выписку в CSV в формате
     pub fn write_csv<W: Write>(&self, writer: W) -> Result<(), ParseError> {
-        
-
-        let mut wtr = WriterBuilder::new()
-            .has_headers(false)
-            .from_writer(writer);
+        let mut wtr = WriterBuilder::new().has_headers(false).from_writer(writer);
 
         // ---- ШАПКА ----
 
@@ -98,7 +94,6 @@ impl Statement {
         Ok(())
     }
 
-
     /// Записывает выписку в формате CAMT.053 (XML)
     pub fn write_camt053<W: Write>(&self, writer: W) -> Result<(), ParseError> {
         let now = Utc::now();
@@ -134,10 +129,7 @@ impl Statement {
         let doc = Camt053Document {
             bank_to_customer: Camt053BankToCustomer {
                 group_header: Some(Camt053GroupHeader {
-                    message_id: format!(
-                        "serialized_via_parser-{}",
-                        now.format("%Y%m%d%H%M%S")
-                    ),
+                    message_id: format!("serialized_via_parser-{}", now.format("%Y%m%d%H%M%S")),
                     created_at: Some(now.format("%Y-%m-%dT%H:%M:%S").to_string()),
                 }),
                 statements: vec![stmt],
@@ -219,4 +211,3 @@ impl Statement {
         Ok(())
     }
 }
-

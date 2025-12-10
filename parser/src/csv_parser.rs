@@ -1,11 +1,11 @@
 mod utils;
 
-use std::io::{Read};
-use chrono::NaiveDate;
-use csv::{ReaderBuilder, StringRecord};
 use crate::error::ParseError;
 use crate::model::{Balance, Statement, Transaction};
 use crate::utils::parse_currency;
+use chrono::NaiveDate;
+use csv::{ReaderBuilder, StringRecord};
+use std::io::Read;
 use utils::*;
 
 /// Структура с данными из заголовка CSV-выписки
@@ -24,7 +24,7 @@ pub(crate) struct CsvHeader {
 
 impl CsvHeader {
     /// Формирует поля выписки из данных заголовка csv-файла
-    /// 
+    ///
     /// Ожидает строго определённое расположение полей в заголовке
     fn from_string_records(rows: &[StringRecord]) -> Result<Self, ParseError> {
         if rows.len() < 8 {
@@ -33,11 +33,7 @@ impl CsvHeader {
 
         // хелпер
         let get = |row_idx: usize, col_idx: usize| -> String {
-            rows[row_idx]
-                .get(col_idx)
-                .unwrap_or("")
-                .trim()
-                .to_string()
+            rows[row_idx].get(col_idx).unwrap_or("").trim().to_string()
         };
 
         let creation_date = get(3, 1);
@@ -50,7 +46,7 @@ impl CsvHeader {
         let currency = get(7, 2);
         let last_transaction_date = get(7, 12);
 
-        Ok(CsvHeader { 
+        Ok(CsvHeader {
             creation_date,
             system,
             bank,
@@ -60,7 +56,7 @@ impl CsvHeader {
             period_until,
             currency,
             last_transaction_date,
-         })
+        })
     }
 }
 
@@ -82,7 +78,6 @@ pub(crate) struct CsvRecord {
 impl CsvRecord {
     /// Распаковывает колонки из записи csv-файла в структуру
     fn from_string_record(row: &StringRecord, layout: &TableLayout) -> Self {
-
         let get = |idx: usize| -> String {
             row.get(idx)
                 .unwrap_or_else(|| panic!("row does not match layout at index {idx}: {:?}", row))
@@ -93,15 +88,21 @@ impl CsvRecord {
         let booking_date = get(layout.booking_date_col);
         let debit_account = get(layout.debit_account_col);
         let credit_account = get(layout.credit_account_col);
-        let debit_amount = row.get(layout.debit_amount_col).map(|s| s.trim().to_string());
+        let debit_amount = row
+            .get(layout.debit_amount_col)
+            .map(|s| s.trim().to_string());
 
-        let credit_amount = row.get(layout.credit_amount_col).map(|s| s.trim().to_string());
+        let credit_amount = row
+            .get(layout.credit_amount_col)
+            .map(|s| s.trim().to_string());
         let doc_number = get(layout.doc_number_col);
         let operation_type = get(layout.operation_type_col);
         let bank = get(layout.bank_col);
-        let transaction_purpose = row.get(layout.transaction_purpose_col).map(|s| s.trim().to_string());
+        let transaction_purpose = row
+            .get(layout.transaction_purpose_col)
+            .map(|s| s.trim().to_string());
 
-        CsvRecord{
+        CsvRecord {
             booking_date,
             debit_account,
             credit_account,
@@ -118,13 +119,12 @@ impl CsvRecord {
         let booking_date = NaiveDate::parse_from_str(&self.booking_date, "%d.%m.%Y")?;
         let value_date: Option<NaiveDate> = None;
         let (amount, direction) = parse_amount_and_direction(
-            self.debit_amount.as_deref(), 
-            self.credit_amount.as_deref()
+            self.debit_amount.as_deref(),
+            self.credit_amount.as_deref(),
         )?;
         let description = self.transaction_purpose.unwrap_or_default();
-        let (counterparty, counterparty_name) = extract_counterparty_account(
-            &self.debit_account, &self.credit_account, our_account
-        );
+        let (counterparty, counterparty_name) =
+            extract_counterparty_account(&self.debit_account, &self.credit_account, our_account);
 
         Ok(Transaction::new(
             booking_date,
@@ -163,13 +163,11 @@ impl CsvFooter {
             }
         }
 
-        let opening_balance = opening.ok_or_else(|| {
-            ParseError::Header("opening balance not found in footer".into())
-        })?;
+        let opening_balance = opening
+            .ok_or_else(|| ParseError::Header("opening balance not found in footer".into()))?;
 
-        let closing_balance = closing.ok_or_else(|| {
-            ParseError::Header("closing balance not found in footer".into())
-        })?;
+        let closing_balance = closing
+            .ok_or_else(|| ParseError::Header("closing balance not found in footer".into()))?;
 
         Ok(CsvFooter {
             opening_balance,
@@ -179,7 +177,7 @@ impl CsvFooter {
 }
 
 /// Индексы нужных колонок поимённо
-/// 
+///
 /// Вспомогательная структура для хранения, в каких столбцах csv содержатся данные для нужного поля
 struct TableLayout {
     booking_date_col: usize,
@@ -195,10 +193,13 @@ struct TableLayout {
 
 impl TableLayout {
     /// По паттернам строк определяет индексы необходимых колонок
-    fn from_string_records(headers_row: &StringRecord, subheaders_row: &StringRecord) -> Result<Self, ParseError> {
+    fn from_string_records(
+        headers_row: &StringRecord,
+        subheaders_row: &StringRecord,
+    ) -> Result<Self, ParseError> {
         // первая строка заголовков - основные
         let booking_date_col = find_col(headers_row, "Дата проводки")?;
-        let debit_account_col  = find_col(subheaders_row, "Дебет")?;
+        let debit_account_col = find_col(subheaders_row, "Дебет")?;
         let credit_account_col = find_col(subheaders_row, "Кредит")?;
         let doc_number_col = find_col(headers_row, "№ документа")?;
         let operation_type_col = find_col(headers_row, "ВО")?;
@@ -206,7 +207,7 @@ impl TableLayout {
         let transaction_purpose_col = find_col(headers_row, "Назначение платежа")?;
 
         // вторая строка с подзаголовками: под «Сумма» стоят "Дебет" и "Кредит"
-        let debit_amount_col  = find_col(headers_row, "Сумма по дебету")?;
+        let debit_amount_col = find_col(headers_row, "Сумма по дебету")?;
         let credit_amount_col = find_col(headers_row, "Сумма по кредиту")?;
 
         Ok(TableLayout {
@@ -218,15 +219,15 @@ impl TableLayout {
             doc_number_col,
             operation_type_col,
             bank_col,
-            transaction_purpose_col
+            transaction_purpose_col,
         })
     }
 }
 
 /// Структура с сырыми данными формата CSV.
-/// 
+///
 /// Для парсинга используйте [`CsvData::parse`].
-/// 
+///
 /// Пример:
 /// ```rust,no_run
 /// use std::io::Cursor;
@@ -252,13 +253,18 @@ impl TryFrom<CsvData> for Statement {
         let currency = parse_currency(&data.header.currency);
         let opening_balance: Option<Balance> = Some(data.footer.opening_balance);
         let closing_balance: Option<Balance> = Some(data.footer.closing_balance);
-        let period_from = data.header.period_from.trim_start_matches("за период с").trim();
+        let period_from = data
+            .header
+            .period_from
+            .trim_start_matches("за период с")
+            .trim();
         let period_until = data.header.period_until.trim_start_matches("по").trim();
 
         let period_from = parse_rus_date(period_from)?;
         let period_until = parse_rus_date(period_until)?;
 
-        let transactions = data.records
+        let transactions = data
+            .records
             .into_iter()
             .map(|rec: CsvRecord| rec.into_transaction(&account_id))
             .collect::<Result<Vec<Transaction>, ParseError>>()?;
@@ -271,19 +277,17 @@ impl TryFrom<CsvData> for Statement {
             closing_balance,
             transactions,
             period_from,
-            period_until
+            period_until,
         ))
     }
 }
 
 impl CsvData {
     /// Парсит при помощи переданного reader данные  в [`CsvData`]
-    /// 
+    ///
     /// При ошибке возвращает [`ParseError`]
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_reader(reader);
+        let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(reader);
 
         let mut header_rows: Vec<StringRecord> = Vec::new();
         let mut data_rows: Vec<StringRecord> = Vec::new();
@@ -302,14 +306,16 @@ impl CsvData {
             let record = result?;
 
             if !in_data_section {
-                // если наткнулись на заголовки таблицы - значит, заголовок файла закончился 
+                // если наткнулись на заголовки таблицы - значит, заголовок файла закончился
                 if record.iter().any(|field| field.contains("Дата проводки")) {
                     headers_row = Some(record);
                     if let Some(next_result) = records_iter.next() {
                         let r = next_result?;
                         subheaders_row = Some(r);
                     } else {
-                        return Err(ParseError::Header("unexpected EOF: second header row missing".into()));
+                        return Err(ParseError::Header(
+                            "unexpected EOF: second header row missing".into(),
+                        ));
                     }
 
                     in_data_section = true;
@@ -332,8 +338,10 @@ impl CsvData {
             }
         }
 
-        let headers_row = headers_row.ok_or_else(|| ParseError::Header("table headers row not found".into()))?;
-        let subheaders_row = subheaders_row.ok_or_else(|| ParseError::Header("table subheaders row not found".into()))?;
+        let headers_row =
+            headers_row.ok_or_else(|| ParseError::Header("table headers row not found".into()))?;
+        let subheaders_row = subheaders_row
+            .ok_or_else(|| ParseError::Header("table subheaders row not found".into()))?;
 
         if footer_rows.is_empty() {
             return Err(ParseError::Header("footer rows not found".into()));
@@ -344,7 +352,6 @@ impl CsvData {
 
         let mut records = Vec::new();
         for row in data_rows {
-
             if row.iter().all(|f| f.trim().is_empty()) {
                 continue;
             }
@@ -355,17 +362,20 @@ impl CsvData {
 
         let footer = CsvFooter::from_string_records(&footer_rows)?;
 
-        Ok(CsvData { header, records, footer })
+        Ok(CsvData {
+            header,
+            records,
+            footer,
+        })
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use csv::StringRecord;
-    use chrono::NaiveDate;
     use crate::model::Direction;
+    use chrono::NaiveDate;
+    use csv::StringRecord;
 
     // CsvHeader
 
@@ -417,7 +427,7 @@ mod tests {
         // row 6 - period_from (col 2), period_until (col 15)
         let row6 = {
             let mut v = vec![String::new(); 16];
-            v[2]  = "за период с 01 января 2023 г.".to_string();
+            v[2] = "за период с 01 января 2023 г.".to_string();
             v[15] = "по 31 января 2023 г.".to_string();
             StringRecord::from(v)
         };
@@ -425,7 +435,7 @@ mod tests {
         // row 7 - currency (col 2), last_transaction_date (col 12)
         let row7 = {
             let mut v = vec![String::new(); 16];
-            v[2]  = "RUB".to_string();
+            v[2] = "RUB".to_string();
             v[12] = "Дата предыдущей операции по счету 31 января 2023 г.".to_string();
             StringRecord::from(v)
         };
@@ -467,10 +477,7 @@ mod tests {
         let err = CsvHeader::from_string_records(&rows).unwrap_err();
         match err {
             ParseError::Header(msg) => {
-                assert!(
-                    msg.contains("not enough rows"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("not enough rows"), "unexpected msg: {msg}");
             }
             other => panic!("expected Header error, got {other:?}"),
         }
@@ -501,8 +508,8 @@ mod tests {
             StringRecord::from(v)
         };
 
-        let layout =
-            TableLayout::from_string_records(&headers_row, &subheaders_row).expect("layout must succeed");
+        let layout = TableLayout::from_string_records(&headers_row, &subheaders_row)
+            .expect("layout must succeed");
 
         assert_eq!(layout.booking_date_col, 0);
         assert_eq!(layout.doc_number_col, 1);
@@ -535,17 +542,17 @@ mod tests {
             v[2] = "Кредит".to_string();
             StringRecord::from(v)
         };
-        let layout =
-            TableLayout::from_string_records(&headers_row, &subheaders_row).expect("layout must succeed");
+        let layout = TableLayout::from_string_records(&headers_row, &subheaders_row)
+            .expect("layout must succeed");
 
         let row = {
             let mut v = vec![String::new(); 7];
             v[0] = " 10.01.2023 ".to_string();
-            v[1] = " 40702810OUR ".to_string();  // debit_account
-            v[2] = " 40702810CP ".to_string();  // credit_account
+            v[1] = " 40702810OUR ".to_string(); // debit_account
+            v[2] = " 40702810CP ".to_string(); // credit_account
             v[3] = " БАНК ".to_string();
-            v[4] = " 123.45 ".to_string();  // debit_amount
-            v[5] = "  ".to_string();  // empty credit_amount
+            v[4] = " 123.45 ".to_string(); // debit_amount
+            v[5] = "  ".to_string(); // empty credit_amount
             v[6] = "  Назначение  ".to_string();
             StringRecord::from(v)
         };
@@ -581,18 +588,18 @@ mod tests {
             v[2] = "Кредит".to_string();
             StringRecord::from(v)
         };
-        let layout =
-            TableLayout::from_string_records(&headers_row, &subheaders_row).expect("layout must succeed");
+        let layout = TableLayout::from_string_records(&headers_row, &subheaders_row)
+            .expect("layout must succeed");
 
         // одна строка таблицы
         let row = {
             let mut v = vec![String::new(); 7];
             v[0] = "10.01.2023".to_string();
-            v[1] = "OUR_ACC".to_string();  // debit_account
-            v[2] = "CP_ACC".to_string();  // credit_account
+            v[1] = "OUR_ACC".to_string(); // debit_account
+            v[2] = "CP_ACC".to_string(); // credit_account
             v[3] = "БАНК".to_string();
-            v[4] = "100.00".to_string();  // debit_amount
-            v[5] = "".to_string();  // credit_amount
+            v[4] = "100.00".to_string(); // debit_amount
+            v[5] = "".to_string(); // credit_amount
             v[6] = "Платёж контрагенту".to_string();
             StringRecord::from(v)
         };
@@ -618,20 +625,20 @@ mod tests {
     fn csv_footer_parses_opening_and_closing_balances() {
         let opening_row = {
             let mut v = vec![String::new(); 21];
-            v[1]  = "Входящий остаток".to_string();
+            v[1] = "Входящий остаток".to_string();
             v[11] = "100.00".to_string();
             StringRecord::from(v)
         };
 
         let closing_row = {
             let mut v = vec![String::new(); 21];
-            v[1]  = "Исходящий остаток".to_string();
+            v[1] = "Исходящий остаток".to_string();
             v[11] = "150.00".to_string();
             StringRecord::from(v)
         };
 
-        let footer =
-            CsvFooter::from_string_records(&[opening_row, closing_row]).expect("footer parse must succeed");
+        let footer = CsvFooter::from_string_records(&[opening_row, closing_row])
+            .expect("footer parse must succeed");
 
         assert_eq!(footer.opening_balance, 10_000);
         assert_eq!(footer.closing_balance, 15_000);
@@ -657,4 +664,3 @@ mod tests {
         }
     }
 }
-

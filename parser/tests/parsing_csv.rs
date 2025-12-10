@@ -10,8 +10,8 @@ fn fixture_path(rel: &str) -> PathBuf {
 
 fn parse_csv_fixture() -> Statement {
     let path = fixture_path("csv/example.csv");
-    let file = File::open(&path)
-        .unwrap_or_else(|e| panic!("failed to open CSV fixture {path:?}: {e}"));
+    let file =
+        File::open(&path).unwrap_or_else(|e| panic!("failed to open CSV fixture {path:?}: {e}"));
     let reader = BufReader::new(file);
 
     let csv_data = CsvData::parse(reader).expect("failed to parse CSV fixture");

@@ -1,9 +1,5 @@
-use parser::{Mt940Data, Statement, Direction};
-use std::{
-    fs::File,
-    io::BufReader,
-    path::PathBuf,
-};
+use parser::{Direction, Mt940Data, Statement};
+use std::{fs::File, io::BufReader, path::PathBuf};
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -15,8 +11,8 @@ fn fixture_path() -> PathBuf {
 
 fn parse_mt940_to_statement() -> Statement {
     let path = fixture_path();
-    let file = File::open(&path)
-        .unwrap_or_else(|e| panic!("failed to open MT940 fixture {path:?}: {e}"));
+    let file =
+        File::open(&path).unwrap_or_else(|e| panic!("failed to open MT940 fixture {path:?}: {e}"));
     let reader = BufReader::new(file);
 
     let data = Mt940Data::parse(reader).expect("failed to parse MT940 fixture");

@@ -1,6 +1,6 @@
-use chrono::NaiveDate;
-use crate::model::{Transaction, Direction, Currency};
 use super::common;
+use crate::model::{Currency, Direction, Transaction};
+use chrono::NaiveDate;
 
 /// Преобразует Currency в 3-буквенный код для MT940
 pub(super) fn currency_code(cur: &Currency) -> &'static str {
@@ -10,7 +10,9 @@ pub(super) fn currency_code(cur: &Currency) -> &'static str {
         Currency::USD => "USD",
         Currency::CNY => "CNY",
         Currency::Other(c) => {
-            println!("found unknown currency {c} while converting to mt940. using placeholder 'XXX'");
+            println!(
+                "found unknown currency {c} while converting to mt940. using placeholder 'XXX'"
+            );
             "XXX"
         }
     }
@@ -71,18 +73,13 @@ pub(super) fn format_86_line(tx: &Transaction) -> Option<String> {
     }
 
     let base = base.trim().to_string();
-    if base.is_empty() {
-        None
-    } else {
-        Some(base)
-    }
+    if base.is_empty() { None } else { Some(base) }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Transaction, Direction, Currency};
+    use crate::model::{Currency, Direction, Transaction};
     use chrono::NaiveDate;
 
     fn d(y: i32, m: u32, day: u32) -> NaiveDate {
@@ -133,15 +130,7 @@ mod tests {
     #[test]
     fn format_61_line_uses_booking_date_when_value_date_absent() {
         let booking = d(2023, 4, 19);
-        let t = tx(
-            booking,
-            None,
-            12_345,
-            Direction::Credit,
-            "Test",
-            None,
-            None,
-        );
+        let t = tx(booking, None, 12_345, Direction::Credit, "Test", None, None);
 
         let line = format_61_line(&t);
         // value_date = booking_date => 230419, entry_date = 0419, C, amount 123,45
@@ -169,24 +158,8 @@ mod tests {
 
     #[test]
     fn format_61_line_credit_and_debit_marks() {
-        let t_credit = tx(
-            d(2023, 1, 1),
-            None,
-            100,
-            Direction::Credit,
-            "",
-            None,
-            None,
-        );
-        let t_debit = tx(
-            d(2023, 1, 1),
-            None,
-            100,
-            Direction::Debit,
-            "",
-            None,
-            None,
-        );
+        let t_credit = tx(d(2023, 1, 1), None, 100, Direction::Credit, "", None, None);
+        let t_debit = tx(d(2023, 1, 1), None, 100, Direction::Debit, "", None, None);
 
         let line_c = format_61_line(&t_credit);
         let line_d = format_61_line(&t_debit);
@@ -198,15 +171,7 @@ mod tests {
 
     #[test]
     fn format_86_line_returns_none_when_all_empty() {
-        let t = tx(
-            d(2023, 1, 1),
-            None,
-            100,
-            Direction::Credit,
-            "",
-            None,
-            None,
-        );
+        let t = tx(d(2023, 1, 1), None, 100, Direction::Credit, "", None, None);
 
         assert_eq!(format_86_line(&t), None);
     }
@@ -223,10 +188,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(
-            format_86_line(&t),
-            Some("Just description".to_string())
-        );
+        assert_eq!(format_86_line(&t), Some("Just description".to_string()));
     }
 
     #[test]
@@ -278,10 +240,6 @@ mod tests {
         );
 
         // пустой account (после trim) должен игнорироваться
-        assert_eq!(
-            format_86_line(&t),
-            Some("Name // Desc".to_string())
-        );
+        assert_eq!(format_86_line(&t), Some("Name // Desc".to_string()));
     }
 }
-

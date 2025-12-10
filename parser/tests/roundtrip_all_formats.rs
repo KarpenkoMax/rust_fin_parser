@@ -1,4 +1,4 @@
-use parser::{Camt053Data, CsvData, Mt940Data, Statement, Direction};
+use parser::{Camt053Data, CsvData, Direction, Mt940Data, Statement};
 use std::{
     fs::File,
     io::{BufReader, Cursor},
@@ -42,8 +42,7 @@ fn camt_to_csv_to_mt940_roundtrip_preserves_core_data() {
 
     // CSV в Statement
     let csv_cursor = Cursor::new(&csv_buf);
-    let csv_data =
-        CsvData::parse(csv_cursor).expect("failed to parse intermediate CSV");
+    let csv_data = CsvData::parse(csv_cursor).expect("failed to parse intermediate CSV");
     let csv_stmt: Statement = csv_data
         .try_into()
         .expect("failed to convert intermediate CsvData into Statement");
@@ -61,8 +60,7 @@ fn camt_to_csv_to_mt940_roundtrip_preserves_core_data() {
 
     // MT940 в финальный Statement
     let mt_cursor = Cursor::new(&mt940_buf);
-    let mt_data =
-        Mt940Data::parse(mt_cursor).expect("failed to parse intermediate MT940");
+    let mt_data = Mt940Data::parse(mt_cursor).expect("failed to parse intermediate MT940");
     let final_stmt: Statement = mt_data
         .try_into()
         .expect("failed to convert intermediate Mt940Data into Statement");
@@ -141,6 +139,5 @@ fn camt_to_csv_to_mt940_roundtrip_preserves_core_data() {
             orig_tx.direction, final_tx.direction,
             "direction mismatch at transaction #{i}"
         );
-
     }
 }

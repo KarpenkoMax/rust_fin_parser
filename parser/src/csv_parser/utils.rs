@@ -1,16 +1,16 @@
-use crate::model::{Balance, Direction};
 use crate::error::ParseError;
-use csv::{StringRecord};
+use crate::model::{Balance, Direction};
 use crate::utils::parse_amount;
 use chrono::NaiveDate;
+use csv::StringRecord;
 
 pub(super) fn parse_footer_balance(row: &StringRecord) -> Result<Balance, ParseError> {
-    let debit_raw  = row.get(7).map(str::trim).unwrap_or("");
+    let debit_raw = row.get(7).map(str::trim).unwrap_or("");
     let credit_raw = row.get(11).map(str::trim).unwrap_or("");
 
     let is_zero = |s: &str| s.is_empty() || s == "0" || s == "0,00" || s == "0.00";
 
-    let has_debit  = !is_zero(debit_raw);
+    let has_debit = !is_zero(debit_raw);
     let has_credit = !is_zero(credit_raw);
 
     match (has_debit, has_credit) {
@@ -45,7 +45,7 @@ pub(super) fn extract_account_and_name(block: &str) -> (Option<String>, Option<S
         .collect();
 
     let account = lines.first().map(|s| (*s).to_string());
-    let name    = lines.get(2).map(|s| (*s).to_string());
+    let name = lines.get(2).map(|s| (*s).to_string());
 
     (account, name)
 }
@@ -59,20 +59,22 @@ pub(super) fn extract_counterparty_account(
     credit_block: &str,
     our_account: &str,
 ) -> (Option<String>, Option<String>) {
-    let (debit_acc,  debit_name)  = extract_account_and_name(debit_block);
+    let (debit_acc, debit_name) = extract_account_and_name(debit_block);
     let (credit_acc, credit_name) = extract_account_and_name(credit_block);
 
     // наш счёт в дебете - к нам пришли деньги
     if let Some(acc) = debit_acc.as_deref()
-        && acc == our_account {
-            return (credit_acc, credit_name);
-        }
+        && acc == our_account
+    {
+        return (credit_acc, credit_name);
+    }
 
     // наш счёт в кредите - от нас ушли деньги
     if let Some(acc) = credit_acc.as_deref()
-        && acc == our_account {
-            return (debit_acc, debit_name);
-        }
+        && acc == our_account
+    {
+        return (debit_acc, debit_name);
+    }
 
     (None, None)
 }
@@ -81,7 +83,6 @@ pub(super) fn parse_amount_and_direction(
     debit: Option<&str>,
     credit: Option<&str>,
 ) -> Result<(u64, Direction), ParseError> {
-
     fn is_empty(val: Option<&str>) -> bool {
         if let Some(s) = val {
             s.trim().is_empty()
@@ -96,14 +97,14 @@ pub(super) fn parse_amount_and_direction(
             let amount = parse_amount(d)?;
             let direction = Direction::Debit;
             Ok((amount, direction))
-        },
+        }
         // кредит: значение есть и непустое, дебет пустой/отсутствует
         (d, Some(c)) if !c.trim().is_empty() && is_empty(d) => {
             let amount = parse_amount(c)?;
             let direction = Direction::Credit;
             Ok((amount, direction))
-        },
-        _ => Err(ParseError::AmountSideConflict)
+        }
+        _ => Err(ParseError::AmountSideConflict),
     }
 }
 
@@ -119,28 +120,22 @@ pub(super) fn is_footer_row(row: &StringRecord) -> bool {
 }
 
 /// Ищет индекс колонки, содержащей текст
-/// 
+///
 /// Возвращает первый найденный, если не находит - возвращает ошибку
 pub(super) fn find_col(row: &StringRecord, needle: &str) -> Result<usize, ParseError> {
     // сначала ищем точное совпадение
-    if let Some(idx) = row
-        .iter()
-        .position(|field| field.trim() == needle)
-    {
+    if let Some(idx) = row.iter().position(|field| field.trim() == needle) {
         return Ok(idx);
     }
 
     // точного совпадения нет
-    if let Some(idx) = row
-        .iter()
-        .position(|field| field.contains(needle))
-    {
+    if let Some(idx) = row.iter().position(|field| field.contains(needle)) {
         return Ok(idx);
     }
 
-    Err(ParseError::Header(
-        format!("column with header equal to or containing '{needle}' not found"),
-    ))
+    Err(ParseError::Header(format!(
+        "column with header equal to or containing '{needle}' not found"
+    )))
 }
 
 pub(super) fn parse_rus_date(raw: &str) -> Result<NaiveDate, ParseError> {
@@ -152,7 +147,9 @@ pub(super) fn parse_rus_date(raw: &str) -> Result<NaiveDate, ParseError> {
     let parts: Vec<&str> = s.split_whitespace().collect();
 
     if parts.len() < 3 {
-        return Err(ParseError::Header(format!("invalid date from string {raw}")));
+        return Err(ParseError::Header(format!(
+            "invalid date from string {raw}"
+        )));
     }
 
     let day: u32 = parts[0]
@@ -443,7 +440,7 @@ mod tests {
 
     // parse_rus_date
 
-     #[test]
+    #[test]
     fn parse_rus_date_parses_normal_russian_date_with_g_dot() {
         let d = parse_rus_date("01 января 2023 г.").unwrap();
         assert_eq!(d, NaiveDate::from_ymd_opt(2023, 1, 1).unwrap());
@@ -489,10 +486,7 @@ mod tests {
         let err = parse_rus_date("xx января 2023 г.").unwrap_err();
         match err {
             ParseError::Header(msg) => {
-                assert!(
-                    msg.contains("invalid day part"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("invalid day part"), "unexpected msg: {msg}");
             }
             other => panic!("expected Header error, got {other:?}"),
         }
@@ -500,10 +494,7 @@ mod tests {
         let err = parse_rus_date("01 января xxxx г.").unwrap_err();
         match err {
             ParseError::Header(msg) => {
-                assert!(
-                    msg.contains("invalid year part"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("invalid year part"), "unexpected msg: {msg}");
             }
             other => panic!("expected Header error, got {other:?}"),
         }
@@ -511,10 +502,7 @@ mod tests {
         let err = parse_rus_date("01 янвяря 2023 г.").unwrap_err();
         match err {
             ParseError::Header(msg) => {
-                assert!(
-                    msg.contains("unknown month"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("unknown month"), "unexpected msg: {msg}");
             }
             other => panic!("expected Header error, got {other:?}"),
         }
@@ -523,13 +511,9 @@ mod tests {
         let err = parse_rus_date("31 июня 2023 г.").unwrap_err();
         match err {
             ParseError::Header(msg) => {
-                assert!(
-                    msg.contains("invalid date:"),
-                    "unexpected msg: {msg}"
-                );
+                assert!(msg.contains("invalid date:"), "unexpected msg: {msg}");
             }
             other => panic!("expected Header error, got {other:?}"),
         }
     }
 }
-

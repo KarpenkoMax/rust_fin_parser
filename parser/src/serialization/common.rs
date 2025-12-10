@@ -1,4 +1,3 @@
-
 /// Форматирует целочисленное значение баланса (копейки) в человекочитаемый формат
 pub(super) fn format_minor_units<T>(value: T, decimal_separator: char) -> String
 where
@@ -54,4 +53,3 @@ mod tests {
         assert_eq!(format_minor_units(-5_i64, ','), "0,05");
     }
 }
-

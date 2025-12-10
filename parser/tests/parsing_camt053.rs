@@ -1,5 +1,5 @@
-use parser::{Camt053Data, Statement, Direction};
 use chrono::NaiveDate;
+use parser::{Camt053Data, Direction, Statement};
 use std::{fs::File, io::BufReader, path::PathBuf};
 
 fn fixture_path() -> PathBuf {
@@ -38,8 +38,14 @@ fn camt053_danske_example_parses_and_has_expected_metadata() {
     assert_eq!(stmt.transactions.len(), 6);
 
     // Балансы должны быть
-    assert!(stmt.opening_balance.is_some(), "opening balance should be present");
-    assert!(stmt.closing_balance.is_some(), "closing balance should be present");
+    assert!(
+        stmt.opening_balance.is_some(),
+        "opening balance should be present"
+    );
+    assert!(
+        stmt.closing_balance.is_some(),
+        "closing balance should be present"
+    );
 
     // Период должен быть хотя бы корректным по порядку
     assert!(

@@ -1,11 +1,10 @@
-use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use parser::{Camt053Data, CsvData, Mt940Data, ParseError, Statement};
-use std::fs::File;
-use std::process;
-use std::io::{self, Read};
 use std::fmt::Display;
-
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::PathBuf;
+use std::process;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -47,17 +46,17 @@ fn main() {
     }
 }
 
-fn parse_to_statement<R: Read> (input_format : &Format, reader: R) -> Result<Statement, ParseError> {
+fn parse_to_statement<R: Read>(input_format: &Format, reader: R) -> Result<Statement, ParseError> {
     // парсинг в общую структуру
     match input_format {
         Format::Csv => {
             let data = CsvData::parse(reader)?;
             Statement::try_from(data)
-        },
+        }
         Format::Camt053 => {
             let data = Camt053Data::parse(reader)?;
             Statement::try_from(data)
-        },
+        }
         Format::Mt940 => {
             let data = Mt940Data::parse(reader)?;
             Statement::try_from(data)
@@ -106,7 +105,6 @@ fn compare_transactions(a: &Statement, b: &Statement) -> bool {
     eq
 }
 
-
 fn compare_statements(a: &Statement, b: &Statement) {
     let mut eq = true;
     if a.account_id != b.account_id {
@@ -119,12 +117,11 @@ fn compare_statements(a: &Statement, b: &Statement) {
     if eq {
         println!("statements are equal")
     }
-
 }
 
 fn run() -> Result<(), ParseError> {
     let args = Args::parse();
- 
+
     if !args.file1.exists() {
         eprintln!("input file 1 does not exist: {}", args.file1.display());
         process::exit(1)
@@ -134,17 +131,22 @@ fn run() -> Result<(), ParseError> {
         eprintln!("input file 2 does not exist: {}", args.file2.display());
         process::exit(1)
     }
-    
+
     let file1 = File::open(&args.file1).unwrap_or_else(|err| {
-        eprintln!("failed to open input file 1 {}: {err}", args.file1.display());
+        eprintln!(
+            "failed to open input file 1 {}: {err}",
+            args.file1.display()
+        );
         process::exit(1);
     });
 
     let file2 = File::open(&args.file2).unwrap_or_else(|err| {
-        eprintln!("failed to open input file 2 {}: {err}", args.file2.display());
+        eprintln!(
+            "failed to open input file 2 {}: {err}",
+            args.file2.display()
+        );
         process::exit(1);
     });
-    
 
     let reader1 = io::BufReader::new(file1);
     let reader2 = io::BufReader::new(file2);

@@ -1,12 +1,14 @@
-use crate::model::{Currency, Direction, Balance};
 use crate::error::ParseError;
+use crate::model::{Balance, Currency, Direction};
 
 pub(crate) fn parse_currency(raw: &str) -> Currency {
     let s = raw.trim();
     let lower = s.to_lowercase();
 
     match lower.as_str() {
-        "российский рубль" | "рубль" | "руб." | "rub" | "rur" => Currency::RUB,
+        "российский рубль" | "рубль" | "руб." | "rub" | "rur" => {
+            Currency::RUB
+        }
         "американский доллар" | "доллар сша" | "usd" => Currency::USD,
         "евро" | "eur" => Currency::EUR,
         "китайский юань" | "юань" | "cny" => Currency::CNY,
@@ -20,7 +22,7 @@ pub(crate) fn parse_amount(raw: &str) -> Result<u64, ParseError> {
     let mut cleaned = raw.trim().replace(' ', "");
 
     if raw.contains(',') {
-        if raw.contains('.'){
+        if raw.contains('.') {
             cleaned = cleaned.replace(',', "");
         } else {
             cleaned = cleaned.replace(',', ".");
@@ -30,17 +32,23 @@ pub(crate) fn parse_amount(raw: &str) -> Result<u64, ParseError> {
     if cleaned.is_empty() {
         return Err(ParseError::InvalidAmount("empty amount".into()));
     }
-    if cleaned.starts_with('-'){
-        return Err(ParseError::InvalidAmount(format!("negative amount: {cleaned}")));
+    if cleaned.starts_with('-') {
+        return Err(ParseError::InvalidAmount(format!(
+            "negative amount: {cleaned}"
+        )));
     }
 
     let mut split = cleaned.split('.');
     // cleaned точно не пусто, так что ошибки здесь быть не может
-    let int_part = split.next().expect("cleaned is verified to be non-empty so panic! must be impossible to happen");
+    let int_part = split
+        .next()
+        .expect("cleaned is verified to be non-empty so panic! must be impossible to happen");
     let dec_part = split.next().unwrap_or("");
     if split.next().is_some() {
         // больше одной точки - странный формат
-        return Err(ParseError::InvalidAmount(format!("too many dots in amount: {cleaned}")));
+        return Err(ParseError::InvalidAmount(format!(
+            "too many dots in amount: {cleaned}"
+        )));
     }
 
     let int_part: u64 = int_part.parse()?;
@@ -52,30 +60,28 @@ pub(crate) fn parse_amount(raw: &str) -> Result<u64, ParseError> {
                 .chars()
                 .next()
                 .and_then(|c| c.to_digit(10))
-                .ok_or_else(|| ParseError::InvalidAmount(format!("invalid fractional part: {cleaned}")))?;
+                .ok_or_else(|| {
+                    ParseError::InvalidAmount(format!("invalid fractional part: {cleaned}"))
+                })?;
             d as u64 * 10
-        },
-        2 => {
-            dec_part
-                .parse()?
-        },
+        }
+        2 => dec_part.parse()?,
         _ => {
-            return Err(ParseError::InvalidAmount(format!("too many fractional digits in amount: {cleaned}")));
+            return Err(ParseError::InvalidAmount(format!(
+                "too many fractional digits in amount: {cleaned}"
+            )));
         }
     };
 
     Ok(int_part * 100 + dec_part)
 }
 
-pub(crate) fn parse_signed_balance(
-    raw: &str,
-    direction: Direction,
-) -> Result<Balance, ParseError> {
+pub(crate) fn parse_signed_balance(raw: &str, direction: Direction) -> Result<Balance, ParseError> {
     let minor = parse_amount(raw)? as i128;
 
     let signed = match direction {
         Direction::Credit => minor,
-        Direction::Debit  => -minor,
+        Direction::Debit => -minor,
     };
 
     Ok(signed)
@@ -84,8 +90,8 @@ pub(crate) fn parse_signed_balance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Currency, Direction};
     use crate::error::ParseError;
+    use crate::model::{Currency, Direction};
 
     // parse_currency
 
@@ -146,25 +152,46 @@ mod tests {
 
     #[test]
     fn parse_amount_empty_or_whitespace_is_error() {
-        assert!(matches!(parse_amount(""), Err(ParseError::InvalidAmount(_))));
-        assert!(matches!(parse_amount("   "), Err(ParseError::InvalidAmount(_))));
+        assert!(matches!(
+            parse_amount(""),
+            Err(ParseError::InvalidAmount(_))
+        ));
+        assert!(matches!(
+            parse_amount("   "),
+            Err(ParseError::InvalidAmount(_))
+        ));
     }
 
     #[test]
     fn parse_amount_negative_is_error() {
-        assert!(matches!(parse_amount("-1"), Err(ParseError::InvalidAmount(_))));
-        assert!(matches!(parse_amount(" -10,00 "), Err(ParseError::InvalidAmount(_))));
+        assert!(matches!(
+            parse_amount("-1"),
+            Err(ParseError::InvalidAmount(_))
+        ));
+        assert!(matches!(
+            parse_amount(" -10,00 "),
+            Err(ParseError::InvalidAmount(_))
+        ));
     }
 
     #[test]
     fn parse_amount_too_many_fraction_digits_is_error() {
-        assert!(matches!(parse_amount("1.234"), Err(ParseError::InvalidAmount(_))));
-        assert!(matches!(parse_amount("1,234"), Err(ParseError::InvalidAmount(_))));
+        assert!(matches!(
+            parse_amount("1.234"),
+            Err(ParseError::InvalidAmount(_))
+        ));
+        assert!(matches!(
+            parse_amount("1,234"),
+            Err(ParseError::InvalidAmount(_))
+        ));
     }
 
     #[test]
     fn parse_amount_too_many_dots_is_error() {
-        assert!(matches!(parse_amount("1.2.3"), Err(ParseError::InvalidAmount(_))));
+        assert!(matches!(
+            parse_amount("1.2.3"),
+            Err(ParseError::InvalidAmount(_))
+        ));
     }
 
     #[test]
@@ -193,4 +220,3 @@ mod tests {
         assert!(matches!(res, Err(ParseError::InvalidAmount(_))));
     }
 }
-

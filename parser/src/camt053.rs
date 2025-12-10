@@ -1,19 +1,19 @@
 pub(crate) mod serde_models;
 mod utils;
 
-use std::io::{Read, BufReader};
-use serde::{Serialize, Deserialize};
 use crate::error::ParseError;
 use crate::model::{Direction, Statement, Transaction};
+use crate::utils::parse_amount;
 use quick_xml::de::from_str;
-use serde_models::*; 
-use crate::utils::{parse_amount};
+use serde::{Deserialize, Serialize};
+use serde_models::*;
+use std::io::{BufReader, Read};
 use utils::*;
 
 /// Структура с сырыми данными формата camt053 после первичной сериализации.
-/// 
+///
 /// Для парсинга используйте [`Camt053Data::parse`].
-/// 
+///
 /// Пример:
 /// ```rust,no_run
 /// use std::io::Cursor;
@@ -33,10 +33,9 @@ pub struct Camt053Data {
 
 impl Camt053Data {
     /// Парсит при помощи переданного reader данные  в [`Camt053Data`]
-    /// 
+    ///
     /// При ошибке возвращает [`ParseError`]
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
-
         let mut buf_reader = BufReader::new(reader);
         let mut xml = String::new();
         buf_reader.read_to_string(&mut xml)?;
@@ -84,10 +83,7 @@ impl TryFrom<&Camt053Entry> for Transaction {
         let booking_date = parse_camt_date_to_naive(&entry.booking_date.date)?;
         let value_date = Some(parse_camt_date_to_naive(&entry.value_date.date)?);
 
-        let tx_dtls = entry
-            .details
-            .as_ref()
-            .and_then(|d| d.tx_details.first());
+        let tx_dtls = entry.details.as_ref().and_then(|d| d.tx_details.first());
 
         let counterparty: Option<String>;
         let counterparty_name: Option<String>;
@@ -151,16 +147,15 @@ impl TryFrom<Camt053Statement> for Statement {
             closing_balance,
             transactions,
             period_from,
-            period_until
+            period_until,
         ))
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Currency};
+    use crate::model::Currency;
     use chrono::NaiveDate;
     use std::io::Cursor;
 
@@ -209,10 +204,7 @@ mod tests {
 
         // Проверяем, что прочитан именно Stmt внутри Document
         let stmt = data.statement;
-        assert_eq!(
-            stmt.account.id.iban.as_deref(),
-            Some("DE1234567890")
-        );
+        assert_eq!(stmt.account.id.iban.as_deref(), Some("DE1234567890"));
         assert_eq!(stmt.account.name.as_deref(), Some("Test Account"));
         assert_eq!(stmt.account.currency.as_deref(), Some("EUR"));
     }
@@ -258,10 +250,7 @@ mod tests {
         // Должен быть BadInput с текстом про отсутствие Stmt
         match err {
             ParseError::BadInput(msg) => {
-                assert!(
-                    msg.contains("no <Stmt>"),
-                    "unexpected message: {msg}"
-                );
+                assert!(msg.contains("no <Stmt>"), "unexpected message: {msg}");
             }
             other => panic!("expected BadInput, got {other:?}"),
         }
@@ -388,7 +377,9 @@ mod tests {
     #[test]
     fn statement_from_camt_data_uses_inner_statement() {
         let camt_stmt = sample_camt_statement();
-        let data = Camt053Data { statement: camt_stmt };
+        let data = Camt053Data {
+            statement: camt_stmt,
+        };
 
         let stmt = Statement::try_from(data).expect("conversion must succeed");
 
@@ -406,4 +397,3 @@ mod tests {
         assert_eq!(stmt.account_id, "not provided");
     }
 }
-

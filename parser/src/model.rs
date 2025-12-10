@@ -20,20 +20,19 @@ pub enum Currency {
     CNY,
 
     /// Неподдерживаемая валюта
-    /// 
+    ///
     /// Содержится как строка
-    /// 
+    ///
     /// Важно:
     /// При использовании [`Currency::Other`] не все операции парсинга/сериализации будут давать стабильный результат.
     Other(String),
 }
 
-
 /// Центральная/корневая структура библиотеки, содержащая одну банковскую выписку.
-/// 
+///
 /// При конвертации выписок исходные данные попадают в эту структуру,
 /// а уже потом сериализуются в нужный формат.
-/// 
+///
 /// Пример использования:
 /// ```rust,no_run
 /// use std::io::{self, Cursor};
@@ -43,10 +42,10 @@ pub enum Currency {
 /// let reader = Cursor::new(csv.as_bytes());
 /// let data = CsvData::parse(reader)?;
 /// let statement = Statement::try_from(data)?;
-/// 
+///
 /// let stdout = io::stdout();
 /// let writer = stdout.lock();
-/// 
+///
 /// statement.write_mt940(writer);
 /// #     Ok(())
 /// # }
@@ -84,7 +83,7 @@ impl Statement {
         period_from: NaiveDate,
         period_until: NaiveDate,
     ) -> Self {
-        Statement { 
+        Statement {
             account_id,
             account_name,
             currency,
@@ -93,7 +92,7 @@ impl Statement {
             transactions,
             period_from,
             period_until,
-         }
+        }
     }
 }
 
@@ -107,9 +106,9 @@ pub enum Direction {
 }
 
 /// Центральная/корневая структура библиотеки, содержащая одну транзакцию.
-/// 
+///
 /// При конвертации выписок или транзакций исходные данные попадают в эту структуру.
-/// 
+///
 /// При обычном использовании библиотеки внешнее взаимодействие с этой структурой не является обязательным,
 /// но может быть полезно при необходимости редактирования транзакций уже после парсинга.
 #[derive(Debug, PartialEq, Eq)]
@@ -129,7 +128,6 @@ pub struct Transaction {
     /// имя контрагента
     pub counterparty_name: Option<String>,
 }
-
 
 impl Transaction {
     /// Go to [`Transaction`]
@@ -158,28 +156,18 @@ impl fmt::Display for Direction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Direction::Credit => write!(f, "Credit"),
-            Direction::Debit  => write!(f, "Debit"),
+            Direction::Debit => write!(f, "Debit"),
         }
     }
 }
 
-
 impl fmt::Display for Transaction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value_date_str = self
-            .value_date
-            .map(|d| d.to_string())
-            .unwrap_or_default();
+        let value_date_str = self.value_date.map(|d| d.to_string()).unwrap_or_default();
 
-        let counterparty_str = self
-            .counterparty
-            .as_deref()
-            .unwrap_or("");
+        let counterparty_str = self.counterparty.as_deref().unwrap_or("");
 
-        let counterparty_name_str = self
-            .counterparty_name
-            .as_deref()
-            .unwrap_or("");
+        let counterparty_name_str = self.counterparty_name.as_deref().unwrap_or("");
 
         write!(
             f,

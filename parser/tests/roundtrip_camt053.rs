@@ -1,4 +1,4 @@
-use parser::{Camt053Data, Statement, Direction};
+use parser::{Camt053Data, Direction, Statement};
 use std::{
     fs::File,
     io::{BufReader, Cursor},
@@ -45,12 +45,10 @@ fn camt053_roundtrip_via_statement_preserves_core_data() {
 
     // снова парсим CAMT053 в Statement
     let cursor = Cursor::new(&buf);
-    let camt2 =
-        Camt053Data::parse(cursor).expect("failed to parse roundtripped CAMT053 XML");
+    let camt2 = Camt053Data::parse(cursor).expect("failed to parse roundtripped CAMT053 XML");
     let roundtrip: Statement = camt2
         .try_into()
         .expect("failed to convert roundtripped Camt053Data into Statement");
-
 
     // Счёт и валюта
     assert_eq!(

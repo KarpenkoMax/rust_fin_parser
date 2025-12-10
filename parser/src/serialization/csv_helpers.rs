@@ -1,12 +1,11 @@
-use chrono::{Datelike, Utc};
-use std::io::Write;
-use csv::Writer;
-use crate::model::{Statement, Direction, Balance, Currency};
-use crate::error::ParseError;
 use super::common;
+use crate::error::ParseError;
+use crate::model::{Balance, Currency, Direction, Statement};
+use chrono::{Datelike, Utc};
+use csv::Writer;
+use std::io::Write;
 
 const COLS: usize = 23;
-
 
 pub(super) fn empty_row() -> Vec<String> {
     vec![String::new(); COLS]
@@ -58,7 +57,6 @@ pub(super) fn write_header<W: Write>(
     wtr: &mut Writer<W>,
     stmt: &Statement,
 ) -> Result<(), ParseError> {
-
     let now = Utc::now();
 
     let mut row0 = empty_row();
@@ -91,10 +89,8 @@ pub(super) fn write_header<W: Write>(
     wtr.write_record(&row5)?;
 
     let mut row6 = empty_row();
-    let period_from_str =
-        format!("за период с {}", format_rus_date(stmt.period_from));
-    let period_until_str =
-        format!("по {}", format_rus_date(stmt.period_until));
+    let period_from_str = format!("за период с {}", format_rus_date(stmt.period_from));
+    let period_until_str = format!("по {}", format_rus_date(stmt.period_until));
 
     row6[2] = period_from_str;
     row6[14] = "по".to_string();
@@ -104,9 +100,7 @@ pub(super) fn write_header<W: Write>(
     let mut row7 = empty_row();
     row7[2] = currency_label(&stmt.currency);
 
-    if let Some(last_date) =
-        stmt.transactions.iter().map(|t| t.booking_date).max()
-    {
+    if let Some(last_date) = stmt.transactions.iter().map(|t| t.booking_date).max() {
         row7[12] = format!(
             "Дата предыдущей операции по счету {}",
             format_rus_date(last_date)
@@ -164,7 +158,7 @@ pub(super) fn write_footer<W: Write>(
     wtr.write_record(&count_row)?;
 
     // Входящий остаток
-        if let Some(opening) = stmt.opening_balance {
+    if let Some(opening) = stmt.opening_balance {
         let mut opening_row = empty_row();
         opening_row[1] = "Входящий остаток".to_string();
 
@@ -174,7 +168,7 @@ pub(super) fn write_footer<W: Write>(
             ((-opening) as u64, 0)
         };
 
-        opening_row[7]  = common::format_minor_units(debit_minor, ',');
+        opening_row[7] = common::format_minor_units(debit_minor, ',');
         opening_row[11] = common::format_minor_units(credit_minor, '.');
 
         opening_row[17] = "(П)".to_string();
@@ -200,7 +194,7 @@ pub(super) fn write_footer<W: Write>(
             ((-closing) as u64, 0)
         };
 
-        closing_row[7]  = common::format_minor_units(debit_minor, ',');
+        closing_row[7] = common::format_minor_units(debit_minor, ',');
         closing_row[11] = common::format_minor_units(credit_minor, '.');
 
         closing_row[17] = "(П)".to_string();
@@ -214,7 +208,7 @@ pub(super) fn write_footer<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Statement, Transaction, Direction, Currency};
+    use crate::model::{Currency, Direction, Statement, Transaction};
     use chrono::NaiveDate;
     use csv::ReaderBuilder;
 
@@ -223,9 +217,7 @@ mod tests {
     }
 
     fn read_all_records(buf: &[u8]) -> Vec<Vec<String>> {
-        let mut rdr = ReaderBuilder::new()
-            .has_headers(false)
-            .from_reader(buf);
+        let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(buf);
 
         rdr.records()
             .map(|r| r.unwrap().iter().map(|s| s.to_string()).collect())
@@ -369,7 +361,12 @@ mod tests {
         assert_eq!(row7[2], currency_label(&stmt.currency));
 
         // Дата предыдущей операции (максимальная дата по транзакциям)
-        let last_date = stmt.transactions.iter().map(|t| t.booking_date).max().unwrap();
+        let last_date = stmt
+            .transactions
+            .iter()
+            .map(|t| t.booking_date)
+            .max()
+            .unwrap();
         let expected_last = format!(
             "Дата предыдущей операции по счету {}",
             format_rus_date(last_date)
@@ -496,4 +493,3 @@ mod tests {
         assert_eq!(records[2][1], "Итого оборотов");
     }
 }
-

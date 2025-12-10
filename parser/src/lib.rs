@@ -90,11 +90,11 @@
 
 #![warn(missing_docs)]
 
+mod camt053;
+mod csv_parser;
 mod error;
 mod model;
-mod csv_parser;
 mod mt940;
-mod camt053;
 mod serialization;
 mod utils;
 
@@ -102,16 +102,10 @@ mod utils;
 
 pub use crate::error::ParseError;
 
-pub use crate::model::{
-    Balance,
-    Currency,
-    Direction,
-    Statement,
-    Transaction,
-};
+pub use crate::model::{Balance, Currency, Direction, Statement, Transaction};
 
 // Формат-специфические структуры-обёртки и их `parse()`
 
-pub use crate::csv_parser::CsvData;
 pub use crate::camt053::Camt053Data;
+pub use crate::csv_parser::CsvData;
 pub use crate::mt940::Mt940Data;

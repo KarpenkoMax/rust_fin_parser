@@ -1,8 +1,8 @@
 use crate::ParseError;
 use chrono::{Datelike, NaiveDate};
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use lazy_regex::lazy_regex;
 
 /// IBAN в формате:
 /// (?i) - case-insensitive
@@ -19,21 +19,20 @@ pub(super) fn split_tag_line(line: &str) -> Result<(&str, &str), ParseError> {
     }
 
     let rest = &line[1..];
-    let tag_end_pos = rest.find(':')
+    let tag_end_pos = rest
+        .find(':')
         .ok_or_else(|| ParseError::Mt940Tag(format!("bad tag line (unclosed tag): {line}")))?;
 
     let (tag_raw, value_with_colon) = rest.split_at(tag_end_pos);
-    let tag = tag_raw.trim(); 
-    let value = &value_with_colon[1..];  // пропускаем двоеточие
-    
+    let tag = tag_raw.trim();
+    let value = &value_with_colon[1..]; // пропускаем двоеточие
+
     Ok((tag, value))
 }
 
 pub(super) fn parse_mt940_yy_mm_dd(s: &str) -> Result<NaiveDate, ParseError> {
     if s.len() != 6 {
-        return Err(ParseError::BadInput(format!(
-            "invalid YYMMDD date: '{s}'"
-        )));
+        return Err(ParseError::BadInput(format!("invalid YYMMDD date: '{s}'")));
     }
 
     let yy: i32 = s[0..2]
@@ -49,9 +48,8 @@ pub(super) fn parse_mt940_yy_mm_dd(s: &str) -> Result<NaiveDate, ParseError> {
     // простое допущение: 00-79 -> 2000-2079, 80-99 -> 1900-1999
     let year = if yy >= 80 { 1900 + yy } else { 2000 + yy };
 
-    NaiveDate::from_ymd_opt(year, mm, dd).ok_or_else(|| {
-        ParseError::BadInput(format!("invalid YYMMDD date components: '{s}'"))
-    })
+    NaiveDate::from_ymd_opt(year, mm, dd)
+        .ok_or_else(|| ParseError::BadInput(format!("invalid YYMMDD date components: '{s}'")))
 }
 
 pub(super) fn derive_booking_date(
@@ -75,9 +73,8 @@ pub(super) fn derive_booking_date(
 
             let year = value_date.year();
 
-            NaiveDate::from_ymd_opt(year, mm, dd).ok_or_else(|| {
-                ParseError::BadInput(format!("invalid MMDD entry date: '{ed}'"))
-            })
+            NaiveDate::from_ymd_opt(year, mm, dd)
+                .ok_or_else(|| ParseError::BadInput(format!("invalid MMDD entry date: '{ed}'")))
         }
         2 => {
             // DD, месяц берём из value_date
@@ -88,9 +85,8 @@ pub(super) fn derive_booking_date(
 
             let year = value_date.year();
 
-            NaiveDate::from_ymd_opt(year, mm, dd).ok_or_else(|| {
-                ParseError::BadInput(format!("invalid DD entry date: '{ed}'"))
-            })
+            NaiveDate::from_ymd_opt(year, mm, dd)
+                .ok_or_else(|| ParseError::BadInput(format!("invalid DD entry date: '{ed}'")))
         }
         _ => Err(ParseError::BadInput(format!(
             "entry date must be 2 or 4 digits, got '{ed}'"
@@ -104,9 +100,10 @@ pub(super) fn find_iban_and_name_in_lines(lines: &[String]) -> Option<(String, O
     // Нас интересуют только случаи, где name.is_some().
     for line in lines {
         if let Some((iban, name)) = find_iban_and_name_in_line(line)
-            && name.is_some() {
-                return Some((iban, name));
-            }
+            && name.is_some()
+        {
+            return Some((iban, name));
+        }
     }
 
     // ищем строку с IBAN и пытаемся взять имя из следующей непустой строки.
@@ -236,19 +233,20 @@ pub(super) fn parse_dc_and_amount<'a>(
 
     // 1) D/C mark
     let dc_mark = take_char(&mut rest).ok_or_else(|| {
-        ParseError::BadInput(format!(
-            "no debit/credit mark in :61: '{full_value}'"
-        ))
+        ParseError::BadInput(format!("no debit/credit mark in :61: '{full_value}'"))
     })?;
 
     // 2) optional funds code (например R в "DR")
     let mut funds_code = None;
     if let Some(next_ch) = rest.chars().next()
-        && next_ch.is_ascii_alphabetic() && next_ch != 'C' && next_ch != 'D' {
-            // продвигаем rest на один символ
-            let _ = take_char(&mut rest);
-            funds_code = Some(next_ch);
-        }
+        && next_ch.is_ascii_alphabetic()
+        && next_ch != 'C'
+        && next_ch != 'D'
+    {
+        // продвигаем rest на один символ
+        let _ = take_char(&mut rest);
+        funds_code = Some(next_ch);
+    }
 
     // 3) сумма: подряд идущие цифры/','/'.'
     let amount = take_while(&mut rest, |ch| {
@@ -264,12 +262,11 @@ pub(super) fn parse_dc_and_amount<'a>(
     Ok((dc_mark, funds_code, amount, rest))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
     use crate::ParseError;
+    use chrono::NaiveDate;
 
     // split_tag_line
 
@@ -361,10 +358,7 @@ mod tests {
     #[test]
     fn derive_booking_date_fails_on_invalid_length() {
         assert!(matches!(
-            derive_booking_date(
-                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
-                Some("2")
-            ),
+            derive_booking_date(NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(), Some("2")),
             Err(ParseError::BadInput(_))
         ));
         assert!(matches!(
@@ -379,17 +373,11 @@ mod tests {
     #[test]
     fn derive_booking_date_fails_on_invalid_digits() {
         assert!(matches!(
-            derive_booking_date(
-                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
-                Some("zz")
-            ),
+            derive_booking_date(NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(), Some("zz")),
             Err(ParseError::BadInput(_))
         ));
         assert!(matches!(
-            derive_booking_date(
-                NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(),
-                Some("99aa")
-            ),
+            derive_booking_date(NaiveDate::from_ymd_opt(2025, 11, 1).unwrap(), Some("99aa")),
             Err(ParseError::BadInput(_))
         ));
     }
@@ -469,26 +457,23 @@ mod tests {
         assert_eq!(name, Some("JOHN DOE".to_string()));
     }
 
-        #[test]
-        fn find_iban_and_name_in_lines_uses_next_line_as_name_if_needed() {
-            let lines = vec![
-                "SOME HEADER".to_string(),
-                format!("IBAN: {VALID_IBAN}"),
-                "".to_string(),
-                "John Doe Full Name".to_string(),
-            ];
+    #[test]
+    fn find_iban_and_name_in_lines_uses_next_line_as_name_if_needed() {
+        let lines = vec![
+            "SOME HEADER".to_string(),
+            format!("IBAN: {VALID_IBAN}"),
+            "".to_string(),
+            "John Doe Full Name".to_string(),
+        ];
 
-            let (iban, name) = find_iban_and_name_in_lines(&lines).unwrap();
-            assert_eq!(iban, VALID_IBAN);
-            assert_eq!(name, Some("John Doe Full Name".to_string()));
-        }
+        let (iban, name) = find_iban_and_name_in_lines(&lines).unwrap();
+        assert_eq!(iban, VALID_IBAN);
+        assert_eq!(name, Some("John Doe Full Name".to_string()));
+    }
 
     #[test]
     fn find_iban_and_name_in_lines_returns_none_if_no_iban() {
-        let lines = vec![
-            "NO IBAN HERE".to_string(),
-            "STILL NO IBAN".to_string(),
-        ];
+        let lines = vec!["NO IBAN HERE".to_string(), "STILL NO IBAN".to_string()];
         assert!(find_iban_and_name_in_lines(&lines).is_none());
     }
 
@@ -613,5 +598,3 @@ mod tests {
         assert!(result.is_err(), "expected error when amount is missing");
     }
 }
-
-

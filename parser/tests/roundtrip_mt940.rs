@@ -1,4 +1,4 @@
-use parser::{Mt940Data, Statement, Direction};
+use parser::{Direction, Mt940Data, Statement};
 use std::{
     fs::File,
     io::{BufReader, Cursor},
@@ -15,8 +15,8 @@ fn fixture_path() -> PathBuf {
 
 fn parse_mt940_to_statement() -> Statement {
     let path = fixture_path();
-    let file = File::open(&path)
-        .unwrap_or_else(|e| panic!("failed to open MT940 fixture {path:?}: {e}"));
+    let file =
+        File::open(&path).unwrap_or_else(|e| panic!("failed to open MT940 fixture {path:?}: {e}"));
     let reader = BufReader::new(file);
 
     let data = Mt940Data::parse(reader).expect("failed to parse MT940 fixture");
@@ -45,8 +45,7 @@ fn mt940_roundtrip_via_statement_preserves_core_data() {
 
     // снова парсим MT940 в Statement
     let cursor = Cursor::new(&buf);
-    let data2 =
-        Mt940Data::parse(cursor).expect("failed to parse roundtripped MT940 data");
+    let data2 = Mt940Data::parse(cursor).expect("failed to parse roundtripped MT940 data");
     let roundtrip: Statement = data2
         .try_into()
         .expect("failed to convert roundtripped Mt940Data into Statement");
@@ -123,29 +122,27 @@ fn mt940_roundtrip_via_statement_preserves_core_data() {
 
         // описание
         assert!(
-            rt_tx.description.contains(orig_tx.description.split(" | ").next().unwrap_or("")),
+            rt_tx
+                .description
+                .contains(orig_tx.description.split(" | ").next().unwrap_or("")),
             "roundtrip description should contain original prefix at tx #{i}"
         );
 
         // counterparty: следим, чтобы не потерять
         match (&orig_tx.counterparty, &rt_tx.counterparty) {
-            (Some(o), Some(r)) => assert_eq!(
-                o, r,
-                "counterparty mismatch at transaction #{i}"
-            ),
-            (Some(o), None) => panic!(
-                "lost counterparty after MT940 roundtrip at transaction #{i}: was {o:?}"
-            ),
+            (Some(o), Some(r)) => assert_eq!(o, r, "counterparty mismatch at transaction #{i}"),
+            (Some(o), None) => {
+                panic!("lost counterparty after MT940 roundtrip at transaction #{i}: was {o:?}")
+            }
             // orig None - ок, можем получить None или Some(...) после допущений при парсинге
             (None, _) => {}
         }
 
         // counterparty_name: следим, чтобы не потерять
         match (&orig_tx.counterparty_name, &rt_tx.counterparty_name) {
-            (Some(o), Some(r)) => assert_eq!(
-                o, r,
-                "counterparty_name mismatch at transaction #{i}"
-            ),
+            (Some(o), Some(r)) => {
+                assert_eq!(o, r, "counterparty_name mismatch at transaction #{i}")
+            }
             (Some(o), None) => panic!(
                 "lost counterparty_name after MT940 roundtrip at transaction #{i}: was {o:?}"
             ),

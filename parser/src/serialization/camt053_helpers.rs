@@ -1,10 +1,9 @@
 use super::common;
 
+use crate::model::{Balance, Currency, Direction, Statement, Transaction};
 use chrono::NaiveDate;
-use crate::model::{Statement, Transaction, Direction, Currency, Balance};
 
 use crate::camt053::serde_models::*;
-
 
 /// ISO-код валюты для CAMT (ISO 4217).
 pub(super) fn currency_code(cur: &Currency) -> &'static str {
@@ -14,9 +13,11 @@ pub(super) fn currency_code(cur: &Currency) -> &'static str {
         Currency::USD => "USD",
         Currency::CNY => "CNY",
         Currency::Other(c) => {
-            println!("found unknown currency {c} while converting to camt053. using placeholder '???'");
+            println!(
+                "found unknown currency {c} while converting to camt053. using placeholder '???'"
+            );
             "???"
-        },
+        }
     }
 }
 
@@ -62,10 +63,7 @@ fn make_balance(code: &str, value: Balance, ccy_code: &str) -> Camt053Balance {
 }
 
 ///  Преобразует транзакции в Ntry
-pub(super) fn entries_from_transactions(
-    txs: &[Transaction],
-    ccy_code: &str,
-) -> Vec<Camt053Entry> {
+pub(super) fn entries_from_transactions(txs: &[Transaction], ccy_code: &str) -> Vec<Camt053Entry> {
     txs.iter()
         .map(|tx| entry_from_transaction(tx, ccy_code))
         .collect()
@@ -166,11 +164,10 @@ pub(super) fn entry_from_transaction(tx: &Transaction, ccy_code: &str) -> Camt05
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Currency, Statement, Transaction, Direction};
+    use crate::model::{Currency, Direction, Statement, Transaction};
     use chrono::NaiveDate;
 
     fn d(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -217,13 +214,19 @@ mod tests {
         assert_eq!(balances.len(), 2);
 
         let opbd = &balances[0];
-        assert_eq!(opbd.balance_type.code_or_proprietary.code.as_deref(), Some("OPBD"));
+        assert_eq!(
+            opbd.balance_type.code_or_proprietary.code.as_deref(),
+            Some("OPBD")
+        );
         assert_eq!(opbd.amount.currency, "EUR");
         assert_eq!(opbd.amount.value, "100.00");
         assert_eq!(opbd.cdt_dbt_ind.as_deref(), Some("CRDT"));
 
         let clbd = &balances[1];
-        assert_eq!(clbd.balance_type.code_or_proprietary.code.as_deref(), Some("CLBD"));
+        assert_eq!(
+            clbd.balance_type.code_or_proprietary.code.as_deref(),
+            Some("CLBD")
+        );
         assert_eq!(clbd.amount.currency, "EUR");
         assert_eq!(clbd.amount.value, "50.00");
         assert_eq!(clbd.cdt_dbt_ind.as_deref(), Some("DBIT"));
@@ -337,4 +340,3 @@ mod tests {
         assert_eq!(entries[1].cdt_dbt_ind, "DBIT");
     }
 }
-

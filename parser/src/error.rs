@@ -28,7 +28,6 @@ pub enum ParseError {
     Io(#[from] std::io::Error),
 
     // логические ошибки
-
     /// ошибка при парсинге валюты
     #[error("invalid currency: {0}")]
     InvalidCurrency(String),
@@ -61,4 +60,3 @@ pub enum ParseError {
     #[error("bad mt940 tag: {0}")]
     Mt940Tag(String),
 }
-
