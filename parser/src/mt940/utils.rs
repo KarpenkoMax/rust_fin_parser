@@ -103,11 +103,10 @@ pub(super) fn find_iban_and_name_in_lines(lines: &[String]) -> Option<(String, O
     // Сначала пытаемся найти строку, где в одной строке есть и IBAN, и часть имени.
     // Нас интересуют только случаи, где name.is_some().
     for line in lines {
-        if let Some((iban, name)) = find_iban_and_name_in_line(line) {
-            if name.is_some() {
+        if let Some((iban, name)) = find_iban_and_name_in_line(line)
+            && name.is_some() {
                 return Some((iban, name));
             }
-        }
     }
 
     // ищем строку с IBAN и пытаемся взять имя из следующей непустой строки.
@@ -172,7 +171,7 @@ pub(super) fn find_iban_and_name_in_line(line: &str) -> Option<(String, Option<S
 /// Ищет любой IBAN-подобный токен в строке
 pub(super) fn find_iban_in_line(line: &str) -> Option<String> {
     line.split_whitespace()
-        .filter_map(|token| normalize_and_check_iban(token))
+        .filter_map(normalize_and_check_iban)
         .next()
 }
 
@@ -244,13 +243,12 @@ pub(super) fn parse_dc_and_amount<'a>(
 
     // 2) optional funds code (например R в "DR")
     let mut funds_code = None;
-    if let Some(next_ch) = rest.chars().next() {
-        if next_ch.is_ascii_alphabetic() && next_ch != 'C' && next_ch != 'D' {
+    if let Some(next_ch) = rest.chars().next()
+        && next_ch.is_ascii_alphabetic() && next_ch != 'C' && next_ch != 'D' {
             // продвигаем rest на один символ
             let _ = take_char(&mut rest);
             funds_code = Some(next_ch);
         }
-    }
 
     // 3) сумма: подряд идущие цифры/','/'.'
     let amount = take_while(&mut rest, |ch| {

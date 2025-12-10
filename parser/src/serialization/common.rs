@@ -5,7 +5,7 @@ where
     T: Into<i128>,
 {
     let v: i128 = value.into();
-    let v = v.abs() as u128;
+    let v = v.unsigned_abs();
     let units = v / 100;
     let frac = v % 100;
 

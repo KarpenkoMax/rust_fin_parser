@@ -116,7 +116,7 @@ pub(super) fn write_header<W: Write>(
     wtr.write_record(&row7)?;
 
     // row 8 - пустая строка перед таблицей
-    wtr.write_record(&empty_row())?;
+    wtr.write_record(empty_row())?;
 
     Ok(())
 }

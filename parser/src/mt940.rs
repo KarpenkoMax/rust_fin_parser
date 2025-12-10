@@ -343,18 +343,16 @@ pub fn extract_counterparty_from_mt940(entry: &Mt940Entry) -> (Option<String>, O
     }
 
     // Пробуем customer_reference
-    if let Some(ref cref) = entry.customer_reference {
-        if let Some((iban, name)) = find_iban_and_name_in_line(cref) {
+    if let Some(ref cref) = entry.customer_reference
+        && let Some((iban, name)) = find_iban_and_name_in_line(cref) {
             return (Some(iban), name);
         }
-    }
 
     // Пробуем bank_reference
-    if let Some(ref bref) = entry.bank_reference {
-        if let Some((iban, name)) = find_iban_and_name_in_line(bref) {
+    if let Some(ref bref) = entry.bank_reference
+        && let Some((iban, name)) = find_iban_and_name_in_line(bref) {
             return (Some(iban), name);
         }
-    }
 
     (None, None)
 }
@@ -376,9 +374,9 @@ impl TryFrom<&Mt940Entry> for Transaction {
         let amount = parse_amount(&entry.amount)?;
 
         let value_date = parse_mt940_yy_mm_dd(&entry.value_date)?;
-        let booking_date = derive_booking_date(value_date.clone(), entry.entry_date.as_deref())?;
+        let booking_date = derive_booking_date(value_date, entry.entry_date.as_deref())?;
 
-        let description = build_description(&entry);
+        let description = build_description(entry);
         let (counterparty, counterparty_name) = extract_counterparty_from_mt940(entry);
 
         Ok(Transaction { 
@@ -637,9 +635,7 @@ impl TryFrom<Mt940Data> for Statement {
     type Error = ParseError;
 
     fn try_from(data: Mt940Data) -> Result<Self, Self::Error> {
-        Ok(
-            Statement::try_from(data.message)?
-        )
+        Statement::try_from(data.message)
     }
 }
 

@@ -93,22 +93,13 @@ impl CsvRecord {
         let booking_date = get(layout.booking_date_col);
         let debit_account = get(layout.debit_account_col);
         let credit_account = get(layout.credit_account_col);
-        let debit_amount = match row.get(layout.debit_amount_col) {
-            Some(s) => Some(s.trim().to_string()),
-            None => None,
-        };
+        let debit_amount = row.get(layout.debit_amount_col).map(|s| s.trim().to_string());
 
-        let credit_amount = match row.get(layout.credit_amount_col) {
-            Some(s) => Some(s.trim().to_string()),
-            None => None,
-        };
+        let credit_amount = row.get(layout.credit_amount_col).map(|s| s.trim().to_string());
         let doc_number = get(layout.doc_number_col);
         let operation_type = get(layout.operation_type_col);
         let bank = get(layout.bank_col);
-        let transaction_purpose = match row.get(layout.transaction_purpose_col) {
-            Some(s) => Some(s.trim().to_string()),
-            None => None,
-        };
+        let transaction_purpose = row.get(layout.transaction_purpose_col).map(|s| s.trim().to_string());
 
         CsvRecord{
             booking_date,

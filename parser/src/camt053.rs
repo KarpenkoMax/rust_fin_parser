@@ -117,9 +117,7 @@ impl TryFrom<Camt053Data> for Statement {
     type Error = ParseError;
 
     fn try_from(data: Camt053Data) -> Result<Self, Self::Error> {
-        Ok(
-            Statement::try_from(data.statement)?
-        )
+        Statement::try_from(data.statement)
     }
 }
 

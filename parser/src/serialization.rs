@@ -127,8 +127,8 @@ impl Statement {
             name: self.account_name.clone(),
             currency: Some(ccy_code.to_string()),
         };
-        stmt.balances = camt053_helpers::balances_from_statement(self, &ccy_code);
-        stmt.entries = camt053_helpers::entries_from_transactions(&self.transactions, &ccy_code);
+        stmt.balances = camt053_helpers::balances_from_statement(self, ccy_code);
+        stmt.entries = camt053_helpers::entries_from_transactions(&self.transactions, ccy_code);
 
         // Заворачиваем в Document
         let doc = Camt053Document {

@@ -44,7 +44,7 @@ pub(super) fn extract_account_and_name(block: &str) -> (Option<String>, Option<S
         .filter(|l| !l.is_empty())
         .collect();
 
-    let account = lines.get(0).map(|s| (*s).to_string());
+    let account = lines.first().map(|s| (*s).to_string());
     let name    = lines.get(2).map(|s| (*s).to_string());
 
     (account, name)
@@ -63,18 +63,16 @@ pub(super) fn extract_counterparty_account(
     let (credit_acc, credit_name) = extract_account_and_name(credit_block);
 
     // наш счёт в дебете - к нам пришли деньги
-    if let Some(acc) = debit_acc.as_deref() {
-        if acc == our_account {
+    if let Some(acc) = debit_acc.as_deref()
+        && acc == our_account {
             return (credit_acc, credit_name);
         }
-    }
 
     // наш счёт в кредите - от нас ушли деньги
-    if let Some(acc) = credit_acc.as_deref() {
-        if acc == our_account {
+    if let Some(acc) = credit_acc.as_deref()
+        && acc == our_account {
             return (debit_acc, debit_name);
         }
-    }
 
     (None, None)
 }
