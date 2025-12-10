@@ -88,6 +88,8 @@
 //!   Поддерживается ограниченный набор валют.
 //!
 
+#![warn(missing_docs)]
+
 mod error;
 mod model;
 mod csv_parser;

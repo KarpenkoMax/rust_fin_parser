@@ -2,24 +2,42 @@ use std::{error::Error, io::Error as IoError, fmt};
 use chrono::ParseError as ChronoParseError;
 use quick_xml::{de::DeError, se::SeError};
 
+/// Ошибки при парсинге данных
 #[derive(Debug)]
 pub enum ParseError {
     // обёртки
+
+    /// обёртка csv::Error
     Csv(csv::Error),
+
+    /// обёртка quick_xml::de::DeError
     XmlDe(DeError),
+    /// обёртка quick_xml::se::SeError
     XmlSe(SeError),
+    /// обёртка chrono::ParseError
     Date(chrono::ParseError),
+    /// обёртка std::num::ParseIntError
     Int(std::num::ParseIntError),
+    /// обёртка std::io::Error
     Io(IoError),
 
     // логические ошибки
+
+    /// ошибка при парсинге валюты
     InvalidCurrency(String),
+    /// ошибка при парсинге денежной суммы
     InvalidAmount(String),
+    /// ошибка при парсинге направления транзакции (дебет/кредит)
     InvalidDirection(String),
+    /// ошибка отсутствия обязательного поля
     MissingField(&'static str),
-    AmountSideConflict, // и дебет, и кредит, или ни одного
+    /// ошибка при проверке двойной записи: и дебет, и кредит, или ни одного
+    AmountSideConflict, // 
+    /// ошибка парсинга заголовка (csv)
     Header(String),
+    /// очень общая ошибка плохих входных данных 
     BadInput(String),
+    /// ошибка парсинга тега mt940
     Mt940Tag(String),
 }
 

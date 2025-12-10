@@ -238,6 +238,14 @@ impl TableLayout {
     }
 }
 
+/// Структура с сырыми данными формата CSV.
+/// 
+/// Для парсинга используйте [`CsvData::parse`].
+/// 
+/// Пример:
+/// ```no_run
+/// let data = CsvData::parse(reader)?;
+/// ```
 pub struct CsvData {
     header: CsvHeader,
     records: Vec<CsvRecord>,
@@ -277,6 +285,14 @@ impl TryFrom<CsvData> for Statement {
 }
 
 impl CsvData {
+    /// Парсит при помощи переданного reader данные  в [`CsvData`]
+    /// 
+    /// При ошибке возвращает [`ParseError`]
+    /// 
+    /// Пример:
+    /// ```no_run
+    /// let data = CsvData::parse(reader)?;
+    /// ```
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)

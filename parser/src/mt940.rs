@@ -525,6 +525,14 @@ impl Mt940Entry {
     }
 }
 
+/// Структура с сырыми данными формата mt940.
+/// 
+/// Для парсинга используйте [`Mt940Data::parse`].
+/// 
+/// Пример:
+/// ```no_run
+/// let data = Mt940Data::parse(reader)?;
+/// ```
 #[derive(Debug, Clone)]
 pub struct Mt940Data {
     /// Пока один Statement
@@ -532,6 +540,14 @@ pub struct Mt940Data {
 }
 
 impl Mt940Data {
+    /// Парсит при помощи переданного reader данные  в [`Mt940Data`]
+    /// 
+    /// При ошибке возвращает [`ParseError`]
+    /// 
+    /// Пример:
+    /// ```no_run
+    /// let data = Mt940Data::parse(reader)?;
+    /// ```
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
         use std::io::BufRead;
 

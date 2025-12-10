@@ -24,12 +24,28 @@ impl From<SeError> for ParseError {
     }
 }
 
+/// Структура с сырыми данными формата camt053 после первичной сериализации.
+/// 
+/// Для парсинга используйте [`Camt053Data::parse`].
+/// 
+/// Пример:
+/// ```no_run
+/// let data = Camt053Data::parse(reader)?;
+/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Camt053Data {
     pub(crate) statement: Camt053Statement,
 }
 
 impl Camt053Data {
+    /// Парсит при помощи переданного reader данные  в [`Camt053Data`]
+    /// 
+    /// При ошибке возвращает [`ParseError`]
+    /// 
+    /// Пример:
+    /// ```no_run
+    /// let data = Camt053Data::parse(reader)?;
+    /// ```
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
 
         let mut buf_reader = BufReader::new(reader);
