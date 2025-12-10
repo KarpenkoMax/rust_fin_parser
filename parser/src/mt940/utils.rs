@@ -2,14 +2,14 @@ use crate::ParseError;
 use chrono::{Datelike, NaiveDate};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use lazy_regex::lazy_regex;
 
-static IBAN_RE: Lazy<Regex> = Lazy::new(|| {
-    // (?i) - case-insensitive
-    // ^[A-Z]{2} - 2 буквы страны
-    // \d{2} - 2 цифры
-    // [A-Z0-9]{11,30} - хвост
-    Regex::new(r"(?i)^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$").unwrap()
-});
+/// IBAN в формате:
+/// (?i) - case-insensitive
+/// ^[A-Z]{2} - 2 буквы страны
+/// \d{2} - 2 цифры
+/// [A-Z0-9]{11,30} - хвост
+static IBAN_RE: Lazy<Regex> = lazy_regex!(r"(?i)^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$");
 
 /// Разделяет строку с тегом на сам тег и строку после него
 pub(super) fn split_tag_line(line: &str) -> Result<(&str, &str), ParseError> {
@@ -191,6 +191,81 @@ pub(super) fn normalize_and_check_iban(token: &str) -> Option<String> {
         None
     }
 }
+
+/// Забирает первый символ из rest и сдвигает rest на него.
+/// Возвращает Some(ch), если символ есть, иначе None.
+pub(super) fn take_char(rest: &mut &str) -> Option<char> {
+    let mut iter = rest.chars();
+    let ch = iter.next()?;
+    *rest = iter.as_str();
+    Some(ch)
+}
+
+/// Забирает подряд символы, пока pred(ch) == true.
+/// Возвращает собранную строку и сдвигает rest.
+pub(super) fn take_while(rest: &mut &str, mut pred: impl FnMut(char) -> bool) -> String {
+    // Сохраняем исходный срез, чтобы потом нарезать его по байтам
+    let s = *rest;
+
+    let mut iter = s.chars().peekable();
+    let mut out = String::new();
+    let mut consumed = 0usize; // сколько байт мы съели
+
+    while let Some(&ch) = iter.peek() {
+        // смотрим на символ, но пока не съедаем его
+        if !pred(ch) {
+            break;
+        }
+
+        out.push(ch);
+        consumed += ch.len_utf8(); // увеличиваем байтовый offset
+        iter.next(); // теперь уже можно съесть этот символ
+    }
+
+    // rest теперь должен указывать на хвост, начинающийся после consumed байт
+    *rest = &s[consumed..];
+
+    out
+}
+
+// возвращает: (dc_mark, funds_code, amount, оставшийся хвост)
+pub(super) fn parse_dc_and_amount<'a>(
+    rest: &'a str,
+    full_value: &str,
+) -> Result<(char, Option<char>, String, &'a str), ParseError> {
+    let mut rest = rest;
+
+    // 1) D/C mark
+    let dc_mark = take_char(&mut rest).ok_or_else(|| {
+        ParseError::BadInput(format!(
+            "no debit/credit mark in :61: '{full_value}'"
+        ))
+    })?;
+
+    // 2) optional funds code (например R в "DR")
+    let mut funds_code = None;
+    if let Some(next_ch) = rest.chars().next() {
+        if next_ch.is_ascii_alphabetic() && next_ch != 'C' && next_ch != 'D' {
+            // продвигаем rest на один символ
+            let _ = take_char(&mut rest);
+            funds_code = Some(next_ch);
+        }
+    }
+
+    // 3) сумма: подряд идущие цифры/','/'.'
+    let amount = take_while(&mut rest, |ch| {
+        ch.is_ascii_digit() || ch == ',' || ch == '.'
+    });
+
+    if amount.is_empty() {
+        return Err(ParseError::BadInput(format!(
+            "no amount found in :61: '{full_value}'"
+        )));
+    }
+
+    Ok((dc_mark, funds_code, amount, rest))
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -417,6 +492,127 @@ mod tests {
             "STILL NO IBAN".to_string(),
         ];
         assert!(find_iban_and_name_in_lines(&lines).is_none());
+    }
+
+    // take_char
+
+    #[test]
+    fn take_char_returns_first_char_and_moves_rest() {
+        let mut rest = "ABC";
+
+        assert_eq!(take_char(&mut rest), Some('A'));
+        assert_eq!(rest, "BC");
+
+        assert_eq!(take_char(&mut rest), Some('B'));
+        assert_eq!(rest, "C");
+
+        assert_eq!(take_char(&mut rest), Some('C'));
+        assert_eq!(rest, "");
+
+        // дальше символов нет
+        assert_eq!(take_char(&mut rest), None);
+        assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn take_char_handles_utf8_multibyte_char() {
+        let mut rest = "Ж9";
+
+        // 'Ж' - многобайтовый символ, проверяем, что rest после него указывает на '9'
+        assert_eq!(take_char(&mut rest), Some('Ж'));
+        assert_eq!(rest, "9");
+
+        assert_eq!(take_char(&mut rest), Some('9'));
+        assert_eq!(rest, "");
+
+        assert_eq!(take_char(&mut rest), None);
+    }
+
+    // take_while
+
+    #[test]
+    fn take_while_stops_before_first_non_matching_char() {
+        let mut rest = "123ABC";
+
+        let prefix = take_while(&mut rest, |ch| ch.is_ascii_digit());
+
+        assert_eq!(prefix, "123");
+        assert_eq!(rest, "ABC");
+    }
+
+    #[test]
+    fn take_while_can_return_empty_and_leave_rest_unchanged() {
+        let mut rest = "ABC";
+
+        let prefix = take_while(&mut rest, |ch| ch.is_ascii_digit());
+
+        assert_eq!(prefix, "");
+        assert_eq!(rest, "ABC");
+    }
+
+    #[test]
+    fn take_while_handles_utf8_multibyte_chars() {
+        let mut rest = "ЖЖA";
+
+        let prefix = take_while(&mut rest, |ch| !ch.is_ascii());
+
+        assert_eq!(prefix, "ЖЖ");
+        assert_eq!(rest, "A");
+    }
+
+    // parse_dc_and_amount
+
+    #[test]
+    fn parse_dc_and_amount_parses_simple_credit_without_tail() {
+        let rest = "C100,00";
+        let full = rest;
+
+        let (dc_mark, funds_code, amount, tail) =
+            parse_dc_and_amount(rest, full).expect("parse_dc_and_amount failed");
+
+        assert_eq!(dc_mark, 'C');
+        assert_eq!(funds_code, None);
+        assert_eq!(amount, "100,00");
+        assert_eq!(tail, "");
+    }
+
+    #[test]
+    fn parse_dc_and_amount_parses_debit_with_tail_after_amount() {
+        let rest = "D250,00NTRFREF123//BANKREF some extra";
+        let full = rest;
+
+        let (dc_mark, funds_code, amount, tail) =
+            parse_dc_and_amount(rest, full).expect("parse_dc_and_amount failed");
+
+        assert_eq!(dc_mark, 'D');
+        assert_eq!(funds_code, None);
+        assert_eq!(amount, "250,00");
+        assert!(tail.starts_with("NTRFREF123//BANKREF some extra"));
+    }
+
+    #[test]
+    fn parse_dc_and_amount_parses_optional_funds_code() {
+        let rest = "DR100,00"; // D + funds_code R + amount
+        let full = rest;
+
+        let (dc_mark, funds_code, amount, tail) =
+            parse_dc_and_amount(rest, full).expect("parse_dc_and_amount failed");
+
+        assert_eq!(dc_mark, 'D');
+        assert_eq!(funds_code, Some('R'));
+        assert_eq!(amount, "100,00");
+        assert_eq!(tail, "");
+    }
+
+    #[test]
+    fn parse_dc_and_amount_errors_when_amount_missing() {
+        // есть только D/C mark, но нет цифр суммы
+        let rest = "C";
+        let full = rest;
+
+        let result = parse_dc_and_amount(rest, full);
+
+        assert!(result.is_err(), "expected error when amount is missing");
     }
 }
 

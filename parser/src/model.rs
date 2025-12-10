@@ -35,14 +35,21 @@ pub enum Currency {
 /// а уже потом сериализуются в нужный формат.
 /// 
 /// Пример использования:
-/// ```no_run
+/// ```rust,no_run
+/// use std::io::{self, Cursor};
+/// use parser::{CsvData, Statement, ParseError};
+/// # fn main() -> Result<(), ParseError> {
+/// let csv = "date,amount\n2024-01-01,100\n";
+/// let reader = Cursor::new(csv.as_bytes());
 /// let data = CsvData::parse(reader)?;
-/// let statement = Statement::try_from(data)?
+/// let statement = Statement::try_from(data)?;
 /// 
 /// let stdout = io::stdout();
 /// let writer = stdout.lock();
 /// 
 /// statement.write_mt940(writer);
+/// #     Ok(())
+/// # }
 /// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct Statement {

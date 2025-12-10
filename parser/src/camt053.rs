@@ -29,8 +29,16 @@ impl From<SeError> for ParseError {
 /// Для парсинга используйте [`Camt053Data::parse`].
 /// 
 /// Пример:
-/// ```no_run
+/// ```rust,no_run
+/// use std::io::Cursor;
+/// use parser::Camt053Data;
+/// # use parser::ParseError;
+/// # fn main() -> Result<(), ParseError> {
+/// let xml = r#"<Document>...</Document>"#;
+/// let reader = Cursor::new(xml.as_bytes());
 /// let data = Camt053Data::parse(reader)?;
+/// #     Ok(())
+/// # }
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Camt053Data {
@@ -41,11 +49,6 @@ impl Camt053Data {
     /// Парсит при помощи переданного reader данные  в [`Camt053Data`]
     /// 
     /// При ошибке возвращает [`ParseError`]
-    /// 
-    /// Пример:
-    /// ```no_run
-    /// let data = Camt053Data::parse(reader)?;
-    /// ```
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
 
         let mut buf_reader = BufReader::new(reader);

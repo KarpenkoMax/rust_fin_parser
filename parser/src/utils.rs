@@ -36,7 +36,7 @@ pub(crate) fn parse_amount(raw: &str) -> Result<u64, ParseError> {
 
     let mut split = cleaned.split('.');
     // cleaned точно не пусто, так что ошибки здесь быть не может
-    let int_part = split.next().unwrap();
+    let int_part = split.next().expect("cleaned is verified to be non-empty so panic! must be impossible to happen");
     let dec_part = split.next().unwrap_or("");
     if split.next().is_some() {
         // больше одной точки - странный формат

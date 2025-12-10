@@ -10,3 +10,5 @@ quick-xml = {version = "0.38", features = ["serialize"]}
 serde = {version = "1", features = ["derive"]}
 regex = "1"
 once_cell = "1"
+lazy-regex = "3"
+thiserror = "2"

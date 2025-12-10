@@ -399,129 +399,85 @@ impl Mt940Entry {
         }
 
         pub fn from_61_line(value: &str, raw_61: String) -> Result<Self, ParseError> {
-        let value = value.trim();
-        let bytes = value.as_bytes();
-        let len = bytes.len();
+            let value = value.trim();
+            let bytes = value.as_bytes();
+            let len = bytes.len();
 
-        if len < 8 {
-            return Err(ParseError::BadInput(format!(
-                "statement line too short: '{value}'"
-            )));
-        }
-
-        // value date (YYMMDD)
-        let value_date = &value[0..6];
-        let mut idx = 6;
-
-        // entry date (4 digits)
-        let mut entry_date = None;
-        if len >= idx + 4
-            && value[idx..idx + 4]
-                .chars()
-                .all(|c| c.is_ascii_digit())
-        {
-            entry_date = Some(value[idx..idx + 4].to_string());
-            idx += 4;
-        }
-
-        // D/C
-        if idx >= len {
-            return Err(ParseError::BadInput(format!(
-                "no debit/credit mark in :61: '{value}'"
-            )));
-        }
-        let dc_mark = value[idx..].chars().next().unwrap();
-        idx += dc_mark.len_utf8();
-
-        // optional funds code (например R в "DR")
-        let mut funds_code = None;
-        if idx < len {
-            let c = value[idx..].chars().next().unwrap();
-            // очень упрощенно: если буква и не цифра/знак суммы - считаем funds code
-            if c.is_ascii_alphabetic() && c != 'C' && c != 'D' {
-                funds_code = Some(c);
-                idx += c.len_utf8();
+            if len < 8 {
+                return Err(ParseError::BadInput(format!(
+                    "statement line too short: '{value}'"
+                )));
             }
-        }
 
-        // amount: до первого символа, который не цифра, не ',' и не '.'
-        let mut amount_start = idx;
-        while amount_start < len {
-            let ch = value[amount_start..].chars().next().unwrap();
-            if ch.is_ascii_digit() || ch == ',' || ch == '.' {
-                break;
+            // value date (YYMMDD)
+            let value_date = &value[0..6];
+            let mut idx = 6;
+
+            // entry date (4 digits)
+            let mut entry_date = None;
+            if len >= idx + 4
+                && value[idx..idx + 4]
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
+            {
+                entry_date = Some(value[idx..idx + 4].to_string());
+                idx += 4;
             }
-            amount_start += ch.len_utf8();
-        }
-        idx = amount_start;
 
-        while idx < len {
-            let ch = value[idx..].chars().next().unwrap();
-            if ch.is_ascii_digit() || ch == ',' || ch == '.' {
-                idx += ch.len_utf8();
-            } else {
-                break;
+            let (
+                dc_mark, funds_code, amount, rest_after_amount
+            ) = parse_dc_and_amount(&value[idx..], value)?;
+
+            let mut rest = rest_after_amount;
+
+            let mut transaction_type = None;
+            let mut customer_reference = None;
+            let mut bank_reference = None;
+            let mut extra_details = None;
+
+            // transaction_type: 4 буквы подряд
+            if rest.len() >= 4 && rest[..4].chars().all(|c| c.is_ascii_alphabetic()) {
+                transaction_type = Some(rest[..4].to_string());
+                rest = rest[4..].trim_start();
             }
-        }
 
-        if idx <= amount_start {
-            return Err(ParseError::BadInput(format!(
-                "no amount found in :61: '{value}'"
-            )));
-        }
+            if let Some(pos) = rest.find("//") {
+                // есть customer_ref и bank_ref
+                let (cust, after_cust) = rest.split_at(pos);
+                customer_reference = Some(cust.trim().to_string());
 
-        let amount = value[amount_start..idx].to_string();
-
-        // transaction_type / references / extra
-        let mut rest = value[idx..].trim_start();
-        let mut transaction_type = None;
-        let mut customer_reference = None;
-        let mut bank_reference = None;
-        let mut extra_details = None;
-
-        // transaction_type: 4 буквы подряд
-        if rest.len() >= 4 && rest[..4].chars().all(|c| c.is_ascii_alphabetic()) {
-            transaction_type = Some(rest[..4].to_string());
-            rest = rest[4..].trim_start();
-        }
-
-        if let Some(pos) = rest.find("//") {
-            // есть customer_ref и bank_ref
-            let (cust, after_cust) = rest.split_at(pos);
-            customer_reference = Some(cust.trim().to_string());
-
-            let after = &after_cust[2..]; // без //
-            if let Some(space_pos) = after.find(' ') {
-                let (bank, extra) = after.split_at(space_pos);
-                bank_reference = Some(bank.trim().to_string());
-                let extra = extra.trim();
-                if !extra.is_empty() {
-                    extra_details = Some(extra.to_string());
+                let after = &after_cust[2..]; // без //
+                if let Some(space_pos) = after.find(' ') {
+                    let (bank, extra) = after.split_at(space_pos);
+                    bank_reference = Some(bank.trim().to_string());
+                    let extra = extra.trim();
+                    if !extra.is_empty() {
+                        extra_details = Some(extra.to_string());
+                    }
+                } else {
+                    let bank = after.trim();
+                    if !bank.is_empty() {
+                        bank_reference = Some(bank.to_string());
+                    }
                 }
-            } else {
-                let bank = after.trim();
-                if !bank.is_empty() {
-                    bank_reference = Some(bank.to_string());
-                }
+            } else if !rest.is_empty() {
+                // только customer_reference без // (напр. "NOVBNL47INGB9999999999")
+                customer_reference = Some(rest.trim().to_string());
             }
-        } else if !rest.is_empty() {
-            // только customer_reference без // (напр. "NOVBNL47INGB9999999999")
-            customer_reference = Some(rest.trim().to_string());
-        }
 
-        Ok(Mt940Entry {
-            raw_61,
-            value_date: value_date.to_string(),
-            entry_date,
-            dc_mark,
-            funds_code,
-            amount,
-            transaction_type,
-            customer_reference,
-            bank_reference,
-            extra_details,
-            info: Mt940EntryInfo { lines: Vec::new() },
-        })
+            Ok(Mt940Entry {
+                raw_61,
+                value_date: value_date.to_string(),
+                entry_date,
+                dc_mark,
+                funds_code,
+                amount,
+                transaction_type,
+                customer_reference,
+                bank_reference,
+                extra_details,
+                info: Mt940EntryInfo { lines: Vec::new() },
+            })
     }
 }
 
@@ -530,8 +486,15 @@ impl Mt940Entry {
 /// Для парсинга используйте [`Mt940Data::parse`].
 /// 
 /// Пример:
-/// ```no_run
+/// ```rust,no_run
+/// use std::io::Cursor;
+/// use parser::Mt940Data;
+/// # use parser::ParseError;
+/// # fn main() -> Result<(), ParseError> {
+/// let reader = Cursor::new(b":20:ABC\n:25:ACCOUNT\n");
 /// let data = Mt940Data::parse(reader)?;
+/// #     Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct Mt940Data {
@@ -543,11 +506,6 @@ impl Mt940Data {
     /// Парсит при помощи переданного reader данные  в [`Mt940Data`]
     /// 
     /// При ошибке возвращает [`ParseError`]
-    /// 
-    /// Пример:
-    /// ```no_run
-    /// let data = Mt940Data::parse(reader)?;
-    /// ```
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
         use std::io::BufRead;
 

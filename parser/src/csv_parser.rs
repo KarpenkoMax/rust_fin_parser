@@ -243,8 +243,15 @@ impl TableLayout {
 /// Для парсинга используйте [`CsvData::parse`].
 /// 
 /// Пример:
-/// ```no_run
+/// ```rust,no_run
+/// use std::io::Cursor;
+/// use parser::CsvData;
+/// # use parser::ParseError;
+/// # fn main() -> Result<(), ParseError> {
+/// let reader = Cursor::new("date,amount\n2024-01-01,100\n");
 /// let data = CsvData::parse(reader)?;
+/// #     Ok(())
+/// # }
 /// ```
 pub struct CsvData {
     header: CsvHeader,
@@ -288,11 +295,6 @@ impl CsvData {
     /// Парсит при помощи переданного reader данные  в [`CsvData`]
     /// 
     /// При ошибке возвращает [`ParseError`]
-    /// 
-    /// Пример:
-    /// ```no_run
-    /// let data = CsvData::parse(reader)?;
-    /// ```
     pub fn parse<R: Read>(reader: R) -> Result<Self, ParseError> {
         let mut rdr = ReaderBuilder::new()
             .has_headers(false)
