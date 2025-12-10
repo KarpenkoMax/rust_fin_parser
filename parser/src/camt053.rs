@@ -5,24 +5,10 @@ use std::io::{Read, BufReader};
 use serde::{Serialize, Deserialize};
 use crate::error::ParseError;
 use crate::model::{Direction, Statement, Transaction};
-use quick_xml::de::{DeError, from_str};
+use quick_xml::de::from_str;
 use serde_models::*; 
 use crate::utils::{parse_amount};
-use quick_xml::se::SeError;
 use utils::*;
-
-
-impl From<DeError> for ParseError {
-    fn from(e: DeError) -> Self {
-        ParseError::XmlDe(e)
-    }
-}
-
-impl From<SeError> for ParseError {
-    fn from(e: SeError) -> Self {
-        ParseError::XmlSe(e)
-    }
-}
 
 /// Структура с сырыми данными формата camt053 после первичной сериализации.
 /// 

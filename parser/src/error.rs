@@ -1,97 +1,64 @@
-use std::{error::Error, io::Error as IoError, fmt};
-use chrono::ParseError as ChronoParseError;
-use quick_xml::{de::DeError, se::SeError};
+use thiserror::Error;
 
 /// Ошибки при парсинге данных
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ParseError {
-    // обёртки
-
     /// обёртка csv::Error
-    Csv(csv::Error),
+    #[error("CSV error: {0}")]
+    Csv(#[from] csv::Error),
 
     /// обёртка quick_xml::de::DeError
-    XmlDe(DeError),
+    #[error("Xml deserialization error: {0}")]
+    XmlDe(#[from] quick_xml::de::DeError),
+
     /// обёртка quick_xml::se::SeError
-    XmlSe(SeError),
+    #[error("Xml serialization error: {0}")]
+    XmlSe(#[from] quick_xml::se::SeError),
+
     /// обёртка chrono::ParseError
-    Date(chrono::ParseError),
+    #[error("date parse error: {0}")]
+    Date(#[from] chrono::ParseError),
+
     /// обёртка std::num::ParseIntError
-    Int(std::num::ParseIntError),
+    #[error("number parse error: {0}")]
+    Int(#[from] std::num::ParseIntError),
+
     /// обёртка std::io::Error
-    Io(IoError),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 
     // логические ошибки
 
     /// ошибка при парсинге валюты
+    #[error("invalid currency: {0}")]
     InvalidCurrency(String),
+
     /// ошибка при парсинге денежной суммы
+    #[error("invalid amount: {0}")]
     InvalidAmount(String),
+
     /// ошибка при парсинге направления транзакции (дебет/кредит)
+    #[error("invalid direction: {0}")]
     InvalidDirection(String),
+
     /// ошибка отсутствия обязательного поля
+    #[error("missing field: {0}")]
     MissingField(&'static str),
+
     /// ошибка при проверке двойной записи: и дебет, и кредит, или ни одного
-    AmountSideConflict, // 
+    #[error("both debit and credit amount present or both empty")]
+    AmountSideConflict,
+
     /// ошибка парсинга заголовка (csv)
+    #[error("invalid header: {0}")]
     Header(String),
-    /// очень общая ошибка плохих входных данных 
+
+    /// очень общая ошибка плохих входных данных
+    #[error("bad input: {0}")]
     BadInput(String),
+
     /// ошибка парсинга тега mt940
+    #[error("bad mt940 tag: {0}")]
     Mt940Tag(String),
 }
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::Csv(e) => write!(f, "CSV error: {e}"),
-            ParseError::XmlDe(e) => write!(f, "Xml deserialization error: {e}"),
-            ParseError::XmlSe(e) => write!(f, "Xml serialization error: {e}"),
-            ParseError::Date(e) => write!(f, "date parse error: {e}"),
-            ParseError::Int(e) => write!(f, "number parse error: {e}"),
-            ParseError::Io(e) => write!(f, "io error: {e}"),
-            ParseError::InvalidCurrency(s) => write!(f, "invalid currency: {s}"),
-            ParseError::InvalidAmount(s) => write!(f, "invalid amount: {s}"),
-            ParseError::InvalidDirection(s) => write!(f, "invalid direction: {s}"),
-            ParseError::MissingField(name) => write!(f, "missing field: {name}"),
-            ParseError::AmountSideConflict => {
-                write!(f, "both debit and credit amount present or both empty")
-            }
-            ParseError::Header(msg) => write!(f, "invalid header: {msg}"),
-            ParseError::BadInput(msg) => write!(f, "bad input: {msg}"),
-            ParseError::Mt940Tag(msg) => write!(f, "bad mt940 tag: {msg}"),
-        }
-    }
-}
-
-impl Error for ParseError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ParseError::Csv(e) => Some(e),
-            ParseError::XmlDe(e) => Some(e),
-            ParseError::XmlSe(e) => Some(e),
-            ParseError::Date(e) => Some(e),
-            ParseError::Int(e) => Some(e),
-            ParseError::Io(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<ChronoParseError> for ParseError {
-    fn from(e: ChronoParseError) -> Self {
-        ParseError::Date(e)
-    }
-}
-
-impl From<std::num::ParseIntError> for ParseError {
-    fn from(e: std::num::ParseIntError) -> Self {
-        ParseError::Int(e)
-    }
-}
-
-impl From<IoError> for ParseError {
-    fn from(e: IoError) -> Self {
-        ParseError::Io(e)
-    }
-}

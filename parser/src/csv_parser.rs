@@ -8,12 +8,6 @@ use crate::model::{Balance, Statement, Transaction};
 use crate::utils::parse_currency;
 use utils::*;
 
-impl From<csv::Error> for ParseError {
-    fn from(e: csv::Error) -> Self {
-        ParseError::Csv(e)
-    }
-}
-
 /// Структура с данными из заголовка CSV-выписки
 #[derive(Debug, Default)]
 pub(crate) struct CsvHeader {
